@@ -1,5 +1,5 @@
 [workspace]
-members = ["csip", "utils", "examples"]
+members = ["csip", "utils", "examples", "csip-sdp"]
 resolver = "1"
 
 [workspace.dependencies]
