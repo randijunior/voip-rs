@@ -597,14 +597,6 @@ impl Endpoint {
         &self.inner.transport
     }
 
-    pub(crate) fn create_uas_dialog(
-        &self,
-        request: &IncomingRequest,
-        contact: Contact,
-    ) -> Result<Dialog> {
-        self.ua().create_uas_dialog(request, contact, self.clone())
-    }
-
     pub(crate) fn ua(&self) -> &UA {
         self.inner.user_agent.as_ref().expect("User Agent not set")
     }
