@@ -1,3 +1,5 @@
+use std::ops;
+
 use tokio::sync::mpsc;
 
 use crate::Endpoint;
@@ -6,7 +8,7 @@ use crate::message::headers::{CallId, Contact, From, Header, Headers, To};
 use crate::message::{Method, Params, ReasonPhrase, Scheme, StatusCode, Uri};
 use crate::transaction::Role;
 use crate::transport::incoming::IncomingRequest;
-use crate::ua::UserAgent;
+use crate::ua::UA;
 
 /**
  * Example of SIP Dialog establishment and termination
@@ -23,7 +25,15 @@ use crate::ua::UserAgent;
 
 /// Returns `true` if this method can establish a dialog
 const fn can_establish_a_dialog(method: &Method) -> bool {
-        matches!(method, Method::Invite)
+    matches!(method, Method::Invite)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DialogState {
+    Initial,
+    Early,
+    Confirmed,
+    Terminated,
 }
 
 /// Represents a SIP Dialog.
@@ -32,58 +42,56 @@ pub struct Dialog {
     id: DialogId,
     state: DialogState,
     remote_cseq: u32,
-    local_seq_num: Option<u32>,
-    from: From,
-    to: To,
-    contact: Contact,
+    local_cseq: Option<u32>,
+    local: From,
+    remote: To,
+    target: Contact,
     secure: bool,
     route_set: Vec<RouteSet>,
-    role: Role,
     usages: Vec<Box<dyn DialogUsage>>,
     receiver: mpsc::Receiver<DialogMessage>,
+    role: Role,
 }
 
-
 impl Dialog {
-    pub fn create_uas(ua: &UserAgent, request: IncomingRequest, contact: Contact) -> Result<Self> {
+    pub fn new_uas(
+        request: &IncomingRequest,
+        contact: Contact,
+        endpoint: Endpoint,
+    ) -> Result<Self> {
         if !can_establish_a_dialog(&request.req_line.method) {
             return Err(DialogError::InvalidMethod.into());
         }
-        let request_headers = &request.incoming_info.mandatory_headers;
-        let all_headers = &request.request.headers;
+        let mandatory_headers = &request.incoming_info.mandatory_headers;
 
-        let Some(local_tag) = request_headers.to.tag().clone() else {
+        let Some(local_tag) = mandatory_headers.to.tag().clone() else {
             return Err(DialogError::MissingTagInToHeader.into());
         };
 
-        let mut to = request_headers.to.clone();
-        let from = request_headers.from.clone();
+        let to = mandatory_headers.to.clone();
+        let from = mandatory_headers.from.clone();
 
-        let remote_cseq = request_headers.cseq.cseq;
+        let remote_cseq = mandatory_headers.cseq.cseq;
         let local_seq_num = None;
 
-        let route_set = RouteSet::from_headers(all_headers);
+        let route_set = RouteSet::from_headers(&request.request.headers);
         let secure = request.incoming_info.transport.transport.is_secure()
             && request.request.req_line.uri.scheme == Scheme::Sips;
 
-        to.set_tag(Some(crate::generate_tag_n(16)));
-
         let dialog_id = DialogId {
-            call_id: request_headers.call_id.clone(),
+            call_id: mandatory_headers.call_id.clone(),
             remote_tag: from.tag().clone().unwrap_or_default(),
             local_tag,
         };
 
         let (sender, receiver) = mpsc::channel(10);
 
-        ua.add_dialog(dialog_id.clone(), sender);
+        endpoint.ua().register_dialog(dialog_id.clone(), sender);
 
-        let transaction = ua.endpoint().new_server_transaction(request);
-
-        let dialog = Self {
-            endpoint: ua.endpoint().clone(),
-            id: dialog_id,
-            state: DialogState::Early,
+        let dialog = Self::new(
+            endpoint,
+            dialog_id,
+            DialogState::Initial,
             remote_cseq,
             local_seq_num,
             from,
@@ -91,12 +99,51 @@ impl Dialog {
             contact,
             secure,
             route_set,
-            role: Role::UAS,
-            usages: Vec::new(),
+            Vec::new(),
             receiver,
-        };
+            Role::UAS,
+        );
 
         Ok(dialog)
+    }
+    pub fn new(
+        endpoint: Endpoint,
+        id: DialogId,
+        state: DialogState,
+        remote_cseq: u32,
+        local_cseq: Option<u32>,
+        local: From,
+        remote: To,
+        target: Contact,
+        secure: bool,
+        route_set: Vec<RouteSet>,
+        usages: Vec<Box<dyn DialogUsage>>,
+        receiver: mpsc::Receiver<DialogMessage>,
+        role: Role,
+    ) -> Self {
+        Self {
+            endpoint,
+            id,
+            state,
+            remote_cseq,
+            local_cseq,
+            local,
+            remote,
+            target,
+            secure,
+            route_set,
+            usages,
+            receiver,
+            role,
+        }
+    }
+
+    pub(crate) fn set_state(&mut self, state: DialogState) {
+        self.state = state;
+    }
+
+    pub(crate) fn id(&self) -> &DialogId {
+        &self.id
     }
 
     pub async fn receive(&mut self, request: IncomingRequest) -> Result<()> {
@@ -107,9 +154,12 @@ impl Dialog {
             && !matches!(request.req_line.method, Method::Ack | Method::Cancel)
         {
             let st_text = ReasonPhrase::from("Invalid Cseq");
-            self.endpoint
-                .respond(&request, StatusCode::ServerInternalError, Some(st_text))
-                .await?;
+            let mut response = self.endpoint.create_response(
+                &request,
+                StatusCode::ServerInternalError,
+                Some(st_text),
+            );
+            self.endpoint.send_outgoing_response(&mut response).await?;
             return Ok(());
         }
         self.remote_cseq = request_cseq;
@@ -143,18 +193,11 @@ pub trait DialogUsage: Sync + Send + 'static {
     async fn on_receive(&self, request: &mut Option<IncomingRequest>) -> Result<()>;
 }
 
-enum DialogState {
-    // Initial state, before any request is sent or received
-    Early,
-    // Established
-    Established,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DialogId {
-    call_id: CallId,
+    pub call_id: CallId,
     pub local_tag: String,
-    remote_tag: String,
+    pub remote_tag: String,
 }
 
 impl DialogId {
@@ -179,7 +222,7 @@ impl DialogId {
     }
 }
 
-struct RouteSet {
+pub(super) struct RouteSet {
     uri: Uri,
     params: Option<Params>,
 }

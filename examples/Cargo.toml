@@ -26,8 +26,5 @@ path = "sipstateless.rs"
 name = "uas"
 path = "uas.rs"
 
-[[example]]
-name = "dialog"
-path = "dialog.rs"
 
 

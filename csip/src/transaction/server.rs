@@ -245,7 +245,7 @@ impl ServerTransaction {
         phrase: Option<ReasonPhrase>,
     ) -> OutgoingResponse {
         self.endpoint
-            .create_outgoing_response(&self.request, code, phrase)
+            .create_response(&self.request, code, phrase)
     }
 
     pub(crate) fn transaction_key(&self) -> &TransactionKey {

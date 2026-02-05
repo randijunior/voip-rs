@@ -5,8 +5,8 @@ use std::ops;
 use bytes::{BufMut, Bytes, BytesMut};
 
 use crate::error::Result;
-use crate::message::headers::{ContentLength, Headers};
-use crate::message::{ReasonPhrase, Request, Response, SipBody, StatusCode};
+use crate::message::headers::{ContentLength};
+use crate::message::{Request, Response, SipBody};
 use crate::parser::HeaderParser;
 
 /// This type represents an outbound SIP request.

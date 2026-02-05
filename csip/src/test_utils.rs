@@ -21,7 +21,7 @@ fn create_test_headers(method: Method) -> Headers {
 
     let via = Via::from_str(&format!("SIP/2.0/UDP localhost:5060;branch={branch}")).unwrap();
     let from = From::from_str("Alice <sip:alice@localhost>;tag=1928301774").unwrap();
-    let to = To::from_str("Bob <sip:bob@localhost>").unwrap();
+    let to = To::from_str("Bob <sip:bob@localhost>;tag=1928301774").unwrap();
     let cid = CallId::from("a84b4c76e66710@pc33.atlanta.com");
     let mfowards = MaxForwards::new(70);
     let cseq = CSeq::new(1, method);
@@ -163,9 +163,7 @@ pub mod transaction {
     impl FakeUAS {
         pub async fn respond(&self, code: StatusCode) {
             let mandatory_headers = self.request.incoming_info.mandatory_headers.clone();
-            let outgoing = self
-                .endpoint
-                .create_outgoing_response(&self.request, code, None);
+            let outgoing = self.endpoint.create_response(&self.request, code, None);
             let packet = Packet::new(outgoing.encoded, outgoing.target_info.target);
 
             let transport = TransportMessage {

@@ -21,9 +21,11 @@ impl EndpointHandler for UAS {
             return;
         }
         if request.req_line.method != Method::Ack {
-            let _res = endpoint
-                .respond(&request, StatusCode::NotImplemented, None)
-                .await;
+            let mut response = endpoint.create_response(&request, StatusCode::NotImplemented, None);
+            endpoint
+                .send_outgoing_response(&mut response)
+                .await
+                .unwrap();
             return;
         }
 

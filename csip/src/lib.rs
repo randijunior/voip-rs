@@ -9,7 +9,6 @@ pub mod message;
 pub mod parser;
 pub mod transaction;
 pub mod transport;
-pub mod dialog;
 pub mod ua;
 
 pub(crate) mod error;

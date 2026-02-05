@@ -28,6 +28,8 @@ use crate::transport::tcp::TcpListener;
 use crate::transport::udp::UdpTransport;
 use crate::transport::ws::WebSocketListener;
 use crate::transport::{SipTransport, Transport, TransportManager, TransportMessage};
+use crate::ua::UA;
+use crate::ua::dialog::Dialog;
 use crate::{Method, Result};
 
 mod builder;
@@ -53,7 +55,7 @@ struct EndpointInner {
     resolver: DnsResolver,
     /// The list of services registered.
     handler: Option<Box<dyn EndpointHandler>>,
-    // user_agent: UserAgent
+    user_agent: Option<UA>,
 }
 
 /// A SIP endpoint.
@@ -82,17 +84,6 @@ impl Endpoint {
         &self.inner.name
     }
 
-    pub async fn respond(
-        &self,
-        request: &IncomingRequest,
-        code: StatusCode,
-        phrase: Option<ReasonPhrase>,
-    ) -> Result<()> {
-        let mut response = self.create_outgoing_response(request, code, phrase);
-
-        self.send_outgoing_response(&mut response).await
-    }
-
     /// Creates a new SIP response based on an incoming
     /// request.
     ///
@@ -100,7 +91,7 @@ impl Endpoint {
     /// and reason phrase. It also sets the necessary headers from request,
     /// including `Call-ID`, `From`, `To`, `CSeq`, `Via` and
     /// `Record-Route` headers.
-    pub fn create_outgoing_response(
+    pub fn create_response(
         &self,
         request: &IncomingRequest,
         code: StatusCode,
@@ -604,5 +595,17 @@ impl Endpoint {
 
     pub(crate) fn transports(&self) -> &TransportManager {
         &self.inner.transport
+    }
+
+    pub(crate) fn create_uas_dialog(
+        &self,
+        request: &IncomingRequest,
+        contact: Contact,
+    ) -> Result<Dialog> {
+        self.ua().create_uas_dialog(request, contact, self.clone())
+    }
+
+    pub(crate) fn ua(&self) -> &UA {
+        self.inner.user_agent.as_ref().expect("User Agent not set")
     }
 }
