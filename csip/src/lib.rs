@@ -45,8 +45,8 @@ pub(crate) fn generate_branch() -> String {
     generate_branch_n(8)
 }
 
-pub (crate) fn generate_branch_n(n: usize) -> String {
-   let mut branch = String::with_capacity(RFC3261_BRANCH_ID.len() + n);
+pub(crate) fn generate_branch_n(n: usize) -> String {
+    let mut branch = String::with_capacity(RFC3261_BRANCH_ID.len() + n);
     branch.push_str(RFC3261_BRANCH_ID);
     Alphanumeric.append_string(&mut rand::rng(), &mut branch, n);
     branch

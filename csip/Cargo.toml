@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 utils.workspace = true
 tokio.workspace = true
+thiserror.workspace = true
 itertools = "0.13.0"
 async-trait = "0.1.83"
 enum-as-inner = "0.6.1"
@@ -16,7 +17,6 @@ tokio-util = {version = "0.7.15", features = ["codec"]}
 tokio-stream = {version = "0.1.17", features = ["net"]}
 tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3.31"
-thiserror = "2.0.12"
 hyper = { version = "1.0", default-features = false, features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"

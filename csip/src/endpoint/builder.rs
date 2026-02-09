@@ -17,7 +17,7 @@ pub struct EndpointBuilder {
     transports: Option<TransportManager>,
     capabilities: Headers,
     handler: Option<Box<dyn EndpointHandler>>,
-    user_agent: Option<UA>
+    user_agent: Option<UA>,
 }
 
 impl EndpointBuilder {
@@ -40,7 +40,7 @@ impl EndpointBuilder {
             handler: None,
             transaction: None,
             transports: Default::default(),
-            user_agent: None
+            user_agent: None,
         }
     }
 
@@ -102,12 +102,12 @@ impl EndpointBuilder {
         self
     }
 
-        /// Sets the transaction layer.
-        pub fn with_ua(mut self, ua: UA) -> Self {
-            self.user_agent = Some(ua);
-    
-            self
-        }
+    /// Sets the transaction layer.
+    pub fn with_ua(mut self, ua: UA) -> Self {
+        self.user_agent = Some(ua);
+
+        self
+    }
 
     /// Sets the transport layer.
     pub fn with_transport(mut self, transport: TransportManager) -> Self {
@@ -132,7 +132,7 @@ impl EndpointBuilder {
                 capabilities: self.capabilities,
                 resolver: self.resolver,
                 handler: self.handler,
-                user_agent: self.user_agent
+                user_agent: self.user_agent,
             }),
         };
 

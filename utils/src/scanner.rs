@@ -2,6 +2,36 @@
 
 type Result<T> = std::result::Result<T, ScannerError>;
 
+#[inline(always)]
+pub fn is_space(c: u8) -> bool {
+    matches!(c, b' ' | b'\t')
+}
+
+#[inline(always)]
+pub fn is_newline(c: u8) -> bool {
+    matches!(c, b'\r' | b'\n')
+}
+
+#[inline(always)]
+pub fn is_not_newline(c: u8) -> bool {
+    !is_newline(c)
+}
+
+#[inline(always)]
+pub fn not_comma_or_newline(c: u8) -> bool {
+    !is_newline(c) && c != b','
+}
+
+#[inline(always)]
+pub fn is_alphabetic(c: u8) -> bool {
+    c.is_ascii_alphabetic()
+}
+
+#[inline(always)]
+pub fn is_digit(c: u8) -> bool {
+    c.is_ascii_digit()
+}
+
 /// A text scanner for sequentially reading bytes from an input slice.
 ///
 /// The `Scanner` provides methods to iterate over the input while
@@ -53,6 +83,14 @@ impl<'buf> Scanner<'buf> {
             self.bump(c);
             return c;
         })
+    }
+
+    pub fn next(&mut self) -> Result<u8> {
+        self.next_byte().ok_or(ScannerError::Eof)
+    }
+
+    pub fn is_eof(&self) -> bool {
+        self.index == self.len
     }
 
     /// Returns a reference to the next byte without advancing the scanner

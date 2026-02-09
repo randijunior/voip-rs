@@ -4,9 +4,8 @@ use std::sync::Mutex;
 pub(crate) mod dialog;
 pub mod session;
 
-use tokio::sync::mpsc;
-
 use dialog::{Dialog, DialogId, DialogMessage};
+use tokio::sync::mpsc;
 
 use crate::error::DialogError;
 use crate::message::Scheme;
@@ -16,7 +15,6 @@ use crate::transport::incoming::IncomingRequest;
 use crate::transport::outgoing::OutgoingResponse;
 use crate::ua::dialog::DialogState;
 use crate::{Endpoint, Method, Result};
-
 
 /// Returns `true` if this method can establish a dialog
 const fn can_establish_a_dialog(method: &Method) -> bool {

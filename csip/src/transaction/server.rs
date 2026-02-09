@@ -244,8 +244,7 @@ impl ServerTransaction {
         code: StatusCode,
         phrase: Option<ReasonPhrase>,
     ) -> OutgoingResponse {
-        self.endpoint
-            .create_response(&self.request, code, phrase)
+        self.endpoint.create_response(&self.request, code, phrase)
     }
 
     pub(crate) fn transaction_key(&self) -> &TransactionKey {
@@ -269,10 +268,9 @@ impl ServerTransaction {
         &mut self,
         mut response: OutgoingResponse,
     ) -> ProvisionalRetransHandle {
-        let mut receiver = self
-            .receiver
-            .take()
-            .expect("Transaction receiver missing while calling `spawn_retransmit_provisional_task`");
+        let mut receiver = self.receiver.take().expect(
+            "Transaction receiver missing while calling `spawn_retransmit_provisional_task`",
+        );
 
         self.state_machine.set_state(State::Proceeding);
 

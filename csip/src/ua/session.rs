@@ -1,10 +1,9 @@
-use crate::{
-    Endpoint, Result,
-    message::{StatusCode, headers::Contact},
-    transaction::ServerTransaction,
-    transport::incoming::IncomingRequest,
-    ua::dialog::{Dialog, DialogState},
-};
+use crate::message::StatusCode;
+use crate::message::headers::Contact;
+use crate::transaction::ServerTransaction;
+use crate::transport::incoming::IncomingRequest;
+use crate::ua::dialog::{Dialog, DialogState};
+use crate::{Endpoint, Result};
 
 pub struct UasInvSession<State> {
     state: State,
@@ -90,4 +89,3 @@ impl UasInvSession<Completed> {
         unimplemented!()
     }
 }
-

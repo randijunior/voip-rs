@@ -6,7 +6,10 @@
 
 use std::str::{self, FromStr};
 
-use utils::{Position, Scanner, ScannerError};
+use utils::{
+    Position, Scanner, ScannerError, is_alphabetic, is_digit, is_newline, is_not_newline, is_space,
+    not_comma_or_newline,
+};
 
 use crate::Result;
 use crate::error::{Error, ParseError, ParseErrorKind as Kind};
@@ -972,36 +975,6 @@ pub(crate) fn parse_via_param<'a>(parser: &mut Parser<'a>) -> Result<ParamRef<'a
     // SAFETY: `is_via_param` only accepts ASCII bytes, which
     // are always valid UTF-8.
     unsafe { parser.parse_param_unchecked(is_via_param) }
-}
-
-#[inline(always)]
-fn is_space(c: u8) -> bool {
-    matches!(c, b' ' | b'\t')
-}
-
-#[inline(always)]
-fn is_newline(c: u8) -> bool {
-    matches!(c, b'\r' | b'\n')
-}
-
-#[inline(always)]
-fn is_not_newline(c: u8) -> bool {
-    !is_newline(c)
-}
-
-#[inline(always)]
-fn not_comma_or_newline(c: u8) -> bool {
-    !is_newline(c) && c != b','
-}
-
-#[inline(always)]
-fn is_alphabetic(c: u8) -> bool {
-    c.is_ascii_alphabetic()
-}
-
-#[inline(always)]
-fn is_digit(c: u8) -> bool {
-    c.is_ascii_digit()
 }
 
 #[inline(always)]
