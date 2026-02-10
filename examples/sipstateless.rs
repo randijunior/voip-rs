@@ -1,9 +1,9 @@
 use std::error::Error;
 
 use async_trait::async_trait;
-use csip::message::{Method, StatusCode};
-use csip::transport::incoming::IncomingRequest;
-use csip::{Endpoint, EndpointHandler};
+use voip_rs::sip::message::{Method, StatusCode};
+use voip_rs::sip::transport::incoming::IncomingRequest;
+use voip_rs::sip::{Endpoint, EndpointHandler};
 use tracing::Level;
 use tracing_subscriber::fmt::time::ChronoLocal;
 
@@ -27,7 +27,7 @@ impl EndpointHandler for StatelessUAS {
 async fn main() -> std::result::Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_max_level(Level::TRACE)
-        .with_env_filter("csip=trace")
+        .with_env_filter("voip-rs=trace")
         .with_timer(ChronoLocal::new(String::from("%H:%M:%S%.3f")))
         .init();
 

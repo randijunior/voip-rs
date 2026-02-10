@@ -149,6 +149,16 @@ impl<'buf> Scanner<'buf> {
             .or_else(|_| Err(ScannerError::InvalidNumber))
     }
 
+    /// Read a `u64` number until an invalid digit is found.
+    ///
+    /// Returns an error if no valid digits were found or if the number is out
+    /// of range.
+    pub fn read_u64(&mut self) -> Result<u64> {
+        self.read_number_str()
+            .parse()
+            .or_else(|_| Err(ScannerError::InvalidNumber))
+    }
+
     /// Read a `f32` number until an invalid digit is found.
     ///
     /// Returns an error if no valid digits were found or if the number is out

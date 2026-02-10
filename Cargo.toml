@@ -1,8 +1,10 @@
 [workspace]
-members = ["csip", "utils", "examples", "csip-sdp"]
-resolver = "1"
+members = ["voip-rs-sip", "utils", "examples", "voip-rs-sdp", "voip-rs"]
+resolver = "2"
 
 [workspace.dependencies]
+sip = { path = "voip-rs-sip", package = "voip-rs-sip"}
+sdp = { path = "voip-rs-sdp" }
 utils = { path = "utils" }
 tokio = { version = "1.41.1", features = [
     "net",

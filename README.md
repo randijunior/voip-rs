@@ -1,3 +1,3 @@
-# csip
+# voip-rs
 
 This project is in its early stages of development.
