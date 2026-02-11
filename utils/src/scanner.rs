@@ -159,6 +159,16 @@ impl<'buf> Scanner<'buf> {
             .or_else(|_| Err(ScannerError::InvalidNumber))
     }
 
+    /// Read a `i64` number until an invalid digit is found.
+    ///
+    /// Returns an error if no valid digits were found or if the number is out
+    /// of range.
+    pub fn read_i64(&mut self) -> Result<i64> {
+        self.read_number_str()
+            .parse()
+            .or_else(|_| Err(ScannerError::InvalidNumber))
+    }
+
     /// Read a `f32` number until an invalid digit is found.
     ///
     /// Returns an error if no valid digits were found or if the number is out
@@ -185,20 +195,6 @@ impl<'buf> Scanner<'buf> {
         // SAFETY: We ensure `start..end` is valid because we only next_byted indexes
         // within the buffer bounds.
         unsafe { self.buffer.get_unchecked(start..end) }
-    }
-
-    /// Reads a slice between two occurrences of byte `c`.
-    pub fn read_between(&mut self, c: u8) -> Option<&'buf [u8]> {
-        let start = self.index;
-
-        self.must_read(c).ok()?;
-        self.read_while(|b| b != c);
-        self.must_read(c).ok()?;
-
-        let end = self.index;
-        // SAFETY: We ensure `start..end` is valid because we only next_byted indexes
-        // within the buffer bounds.
-        Some(unsafe { self.buffer.get_unchecked(start..end) })
     }
 
     /// peek_byte bytes in the buffer while the `predicate` returns true.
@@ -258,6 +254,11 @@ impl<'buf> Scanner<'buf> {
     #[inline]
     pub fn read_until(&mut self, byte: u8) -> &'buf [u8] {
         self.read_while(|b| b != byte)
+    }
+
+    #[inline]
+    pub fn read_until_as_str(&mut self, byte: u8) -> Result<&'buf str> {
+        self.read_while_as_str(|b| b != byte)
     }
 
     /// Reads bytes while `predicate` returns true and converts them to a string

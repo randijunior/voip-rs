@@ -2,10 +2,10 @@ use std::error::Error;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use voip_rs::sip::message::{Method, StatusCode};
-use voip_rs::sip::transaction::TransactionManager;
-use voip_rs::sip::transport::incoming::IncomingRequest;
-use voip_rs::sip::{Endpoint, EndpointHandler};
+use voip::sip::message::{Method, StatusCode};
+use voip::sip::transaction::TransactionManager;
+use voip::sip::transport::incoming::IncomingRequest;
+use voip::sip::{Endpoint, EndpointHandler};
 use tokio::time;
 use tracing::Level;
 
@@ -37,7 +37,7 @@ impl EndpointHandler for UAS {
 async fn main() -> std::result::Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_max_level(Level::TRACE)
-        .with_env_filter("voip-rs=trace")
+        .with_env_filter("voip=trace")
         .with_timer(tracing_subscriber::fmt::time::SystemTime)
         .init();
 

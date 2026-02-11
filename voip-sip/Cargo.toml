@@ -1,0 +1,32 @@
+[package]
+name = "voip-sip"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+utils.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+itertools = "0.13.0"
+async-trait = "0.1.83"
+enum-as-inner = "0.6.1"
+log = "0.4.26"
+tracing = "0.1.41"
+local-ip-address = "0.6.3"
+tokio-util = {version = "0.7.15", features = ["codec"]}
+tokio-stream = {version = "0.1.17", features = ["net"]}
+tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3.31"
+hyper = { version = "1.0", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+rand = "0.9.2"
+uuid = {version = "1.18.1", features = [ "v4" ]}
+pin-project-lite = "0.2"
+
+[dev-dependencies]
+assert_matches = "1.5"
+criterion = "0.5"
+test-log = "0.2.18"
+

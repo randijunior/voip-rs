@@ -11,7 +11,7 @@ tokio = { version = "1", features = ["rt", "macros", "tracing", "signal"] }
 tracing = "0.1.41"
 tracing-subscriber = {version = "0.3", features = ["env-filter", "chrono"]}
 async-trait = "0.1.83"
-voip-rs = {path = "../voip-rs"}
+voip = {path = "../voip"}
 chrono = "0.4"
 
 [dependencies.console-subscriber]
