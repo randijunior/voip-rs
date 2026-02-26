@@ -330,6 +330,10 @@ impl Response {
     pub fn set_headers(&mut self, headers: Headers) {
         self.headers = headers;
     }
+
+    pub fn set_body(&mut self, body: SipBody) {
+        self.body = Some(body);
+    }
 }
 
 /// Represents a `reason-phrase` in Status-Line.
@@ -363,7 +367,7 @@ where
 }
 
 /// This type represents a body in a SIP message.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct SipBody {
     data: Bytes,
 }

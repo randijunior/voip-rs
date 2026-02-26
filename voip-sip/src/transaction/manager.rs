@@ -6,23 +6,25 @@ use tokio::sync::mpsc::{self};
 use super::{Role, TransactionMessage};
 use crate::message::HostPort;
 use crate::transport::incoming::{IncomingInfo, IncomingRequest, IncomingResponse};
-use crate::{Method, RFC3261_BRANCH_ID};
+use crate::endpoint::{self, ReceivedResponse};
+use crate::endpoint::ReceivedRequest;
+use crate::{Endpoint, Method, RFC3261_BRANCH_ID};
 
-type TransactionChannel = mpsc::Sender<TransactionMessage>;
+type TransactionEntry = mpsc::Sender<TransactionMessage>;
 
-/// This type holds all server and client Transactions created by the TU (Transaction User).
+
 #[derive(Default)]
-pub struct TransactionManager {
-    transactions: Mutex<HashMap<TransactionKey, TransactionChannel>>,
+pub struct TsxModule {
+    transactions: Mutex<HashMap<TransactionKey, TransactionEntry>>,
 }
 
-impl TransactionManager {
+impl TsxModule {
     pub fn new() -> Self {
         Self::default()
     }
-    /// Add an transaction in the collection.
+
     #[inline]
-    pub(crate) fn add_transaction(&self, key: TransactionKey, entry: TransactionChannel) {
+    pub(crate) fn add_transaction(&self, key: TransactionKey, entry: TransactionEntry) {
         let mut map = self.transactions.lock().expect("Lock failed");
 
         map.insert(key, entry);
@@ -36,46 +38,45 @@ impl TransactionManager {
     }
 
     #[inline]
-    pub(crate) fn get_entry(&self, key: &TransactionKey) -> Option<TransactionChannel> {
+    pub(crate) fn get_entry(&self, key: &TransactionKey) -> Option<TransactionEntry> {
         let map = self.transactions.lock().expect("Lock failed");
 
         map.get(key).cloned()
     }
+}
 
-    pub(crate) async fn handle_response(
-        &self,
-        response: IncomingResponse,
-    ) -> Option<IncomingResponse> {
-        let key = TransactionKey::from_response(&response);
-        let Some(channel) = self.get_entry(&key) else {
-            return Some(response);
-        };
-        let _res = channel.send(TransactionMessage::Response(response)).await;
-        // let mandatory = &response.info.mandatory_headers;
-
-        // let method = mandatory.cseq.method;
-        // let Some(branch) = mandatory.via.branch.clone() else {
-        //     return Some(response);
-        // };
-        // let key = TransactionKey::new_key_3261(Role::UAC, method, branch);
-        // let map = self.transactions.lock().expect("Lock failed");
-        // let Some(channel) = map.get(&key) else {
-        //     return Some(response);
-        // };
-        // let _result = channel.send(TransactionMessage::Response(response));
-        None
+#[async_trait::async_trait]
+impl endpoint::Module for TsxModule {
+    fn name(&self) -> &'static str {
+        "tsx-module"
     }
 
-    pub(crate) async fn receive(&self, request: IncomingRequest) -> Option<IncomingRequest> {
+    async fn on_receive_request(&self, mut request: ReceivedRequest<'_>, _: &Endpoint) {
         let key = TransactionKey::from_request(&request);
 
         let Some(channel) = self.get_entry(&key) else {
-            return Some(request);
+            return;
         };
-        let _res = channel.send(TransactionMessage::Request(request)).await;
-        None
+        
+        let request = request.take();
+
+       channel.send(TransactionMessage::Request(request)).await.unwrap();
+    }
+
+    async fn on_receive_response(&self, mut response: ReceivedResponse<'_>, _: &Endpoint) {
+        let key = TransactionKey::from_response(&response);
+
+        let Some(channel) = self.get_entry(&key) else {
+            return;
+        };
+        
+        let response = response.take();
+
+        let _res = channel.send(TransactionMessage::Response(response)).await;
     }
 }
+
+
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum TransactionKey {
@@ -136,70 +137,4 @@ pub struct Rfc3261 {
     role: Role,
     branch: String,
     method: Option<Method>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::endpoint;
-    use crate::message::Method;
-
-    #[tokio::test]
-    async fn test_non_invite_server_tsx() {
-        /*
-        let mut req = mock::request(Method::Register);
-
-        let endpoint = endpoint::EndpointBuilder::new()
-            .add_transaction(TransactionManager::default())
-            .build();
-
-        let tsx = endpoint.new_server_transaction(&mut req);
-
-        let transactions = endpoint.transactions();
-        let key = tsx.key();
-        let tsx = transactions.find_server_tsx(&key);
-
-        assert!(matches!(tsx.as_ref(), Some(ServerTransaction::NonInvite(_))));
-        let tsx = match tsx.unwrap() {
-            ServerTransaction::NonInvite(tsx) => tsx,
-            _ => unreachable!(),
-        };
-
-        tsx.terminate();
-        let tsx = transactions.find_server_tsx(&key);
-
-        assert!(tsx.is_none());
-         */
-    }
-
-    #[tokio::test]
-    async fn test_invite_server_tsx() {
-        /*
-        let mut req = mock::request(Method::Invite);
-
-        let endpoint = endpoint::EndpointBuilder::new()
-            .add_transaction(TransactionManager::default())
-            .build();
-
-        let tsx = endpoint.new_inv_server_transaction(&mut req);
-
-        let transactions = endpoint.transactions();
-        let key = tsx.key();
-
-        let tsx = transactions.find_server_tsx(&key);
-
-        assert!(matches!(tsx.as_ref(), Some(ServerTransaction::Invite(_))));
-
-        let tsx = match tsx.unwrap() {
-            ServerTransaction::Invite(tsx) => tsx,
-            _ => unreachable!(),
-        };
-
-        tsx.terminate();
-
-        let tsx = transactions.find_server_tsx(&key);
-
-        assert!(tsx.is_none());
-        */
-    }
 }

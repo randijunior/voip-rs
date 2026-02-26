@@ -11,6 +11,14 @@ pub struct IncomingRequest {
     pub incoming_info: Box<IncomingInfo>,
 }
 
+impl IncomingRequest {
+    pub fn encoded_str(&self) -> &str {
+        // SAFETY: An parsed IncomingRequest is aways a correctly 
+        // encoded UTF-8 string.
+        unsafe { std::str::from_utf8_unchecked(&self.incoming_info.transport.packet.data) }
+    }
+}
+
 impl ops::Deref for IncomingRequest {
     type Target = Request;
     fn deref(&self) -> &Self::Target {

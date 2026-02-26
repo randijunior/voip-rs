@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 utils.workspace = true
 thiserror.workspace = true
+bytes.workspace = true

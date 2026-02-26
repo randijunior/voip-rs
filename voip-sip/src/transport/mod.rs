@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use utils::{NAPTR, Name, RData, SRV};
 
-use crate::Endpoint;
+use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 use crate::message::SipMessage;
 use crate::message::uri::{DomainName, Host, Scheme, Uri};
@@ -55,8 +55,6 @@ pub const KEEPALIVE_RESPONSE: &[u8] = b"\r\n";
 /// Marks the end of headers in a SIP message.
 pub const MSG_HEADERS_END: &[u8] = b"\r\n\r\n";
 
-/// Type alias for a map of transports.
-pub(crate) type TransportsMap = HashMap<TransportKey, Transport>;
 
 /// This type is a wrapper around a SIP transport implementation.
 #[derive(Clone)]
@@ -82,32 +80,30 @@ impl ops::Deref for Transport {
     }
 }
 
-/// Manager for SIP all transports.
-pub struct TransportManager {
-    /// All transports indexed by their unique keys.
-    transports: Mutex<TransportsMap>,
+pub struct TransportConfig {
+    // Enable NAPTR lookups
+    naptrlookup: bool,
+    // Enable DNS SRV lookups
+    srvlookup: bool
 }
 
-impl From<TransportsMap> for TransportManager {
-    fn from(value: TransportsMap) -> Self {
-        Self {
-            transports: Mutex::new(value),
-        }
-    }
+/// Module for SIP all transports.
+pub struct TransportModule {
+    map: Mutex<HashMap<TransportKey, Transport>>,
 }
 
-impl TransportManager {
-    /// Create a new `TransportManager` instance.
+impl TransportModule {
+    /// Create a new `TransportModule` instance.
     pub fn new() -> Self {
-        TransportManager {
-            transports: Mutex::new(HashMap::new()),
+        TransportModule {
+            map: Mutex::new(HashMap::new()),
         }
     }
 
     /// Add a new transport to the manager.
     pub fn register_transport(&self, transport: Transport) -> Result<()> {
         let key = transport.key();
-        let mut map = self.transports.lock().map_err(|_| Error::PoisonedLock)?;
+        let mut map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
 
         map.insert(key, transport);
 
@@ -116,7 +112,7 @@ impl TransportManager {
 
     /// Remove a transport by its key.
     pub fn remove_transport(&self, key: &TransportKey) -> Result<()> {
-        let mut map = self.transports.lock().map_err(|_| Error::PoisonedLock)?;
+        let mut map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
 
         map.remove(key);
 
@@ -315,7 +311,7 @@ impl TransportManager {
     }
 
     fn get_by_key(&self, key: &TransportKey) -> Result<Option<Transport>> {
-        let map = self.transports.lock().map_err(|_| Error::PoisonedLock)?;
+        let map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
         Ok(map.get(key).cloned())
     }
 
@@ -324,7 +320,7 @@ impl TransportManager {
         protocol: TransportType,
         ip: IpAddr,
     ) -> Result<Option<Transport>> {
-        let map = self.transports.lock().map_err(|_| Error::PoisonedLock)?;
+        let map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
         let transport = map.iter().find(|(_key, transport)| {
             transport.transport_type() == protocol
                 && is_same_ip_family(&transport.local_addr().ip(), &ip)
@@ -370,7 +366,7 @@ impl TransportManager {
 
     /// Return the number of transports registered.
     pub fn transport_count(&self) -> Result<usize> {
-        let map = self.transports.lock().map_err(|_| Error::PoisonedLock)?;
+        let map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
 
         Ok(map.len())
     }
@@ -676,7 +672,7 @@ mod tests {
 
     #[test]
     fn test_transport_manager() {
-        let manager = TransportManager::new();
+        let manager = TransportModule::new();
         let transport = MockTransport::new_udp();
         let addr = transport.local_addr();
         let tp_type = transport.transport_type();

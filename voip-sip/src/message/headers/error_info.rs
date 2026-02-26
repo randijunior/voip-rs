@@ -37,9 +37,9 @@ impl HeaderParser for ErrorInfo {
 
     fn parse(parser: &mut Parser) -> Result<Self> {
         let infos = comma_separated_header_value!(parser => {
-            parser.next_byte()?;
+            parser.read()?;
             let url = parser.read_until(b'>');
-            parser.next_byte()?;
+            parser.read()?;
 
             let url = str::from_utf8(url)?;
             let params = parse_header_param!(parser);

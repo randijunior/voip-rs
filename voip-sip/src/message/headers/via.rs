@@ -163,7 +163,7 @@ impl HeaderParser for Via {
     fn parse(parser: &mut Parser) -> Result<Self> {
         //@TODO: handle LWS
         parser.parse_sip_version()?;
-        parser.next_byte()?;
+        parser.read()?;
 
         let transport = parser.read_token_str();
         let transport = transport
@@ -209,10 +209,10 @@ impl HeaderParser for Via {
             None
         };
 
-        let comment = if parser.peek_byte() == Some(&b'(') {
-            parser.next_byte()?;
+        let comment = if parser.peek() == Some(&b'(') {
+            parser.read()?;
             let comment = parser.read_until(b')');
-            parser.next_byte()?;
+            parser.read()?;
             Some(str::from_utf8(comment)?.into())
         } else {
             None

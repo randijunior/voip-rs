@@ -15,7 +15,9 @@ pub(crate) mod error;
 
 pub mod macros;
 
-pub use endpoint::{Endpoint, EndpointHandler};
+pub use endpoint::{Endpoint};
+
+pub use utils::ToTake;
 use error::Error;
 pub use error::Result;
 pub use message::Method;
@@ -171,7 +173,7 @@ impl MediaType {
 
     pub fn parse(parser: &mut Parser) -> Result<Self> {
         let mtype = parser.parse_token()?;
-        parser.next_byte();
+        parser.read();
         let subtype = parser.parse_token()?;
         let param = crate::macros::parse_header_param!(parser);
 

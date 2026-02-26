@@ -28,7 +28,7 @@ use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
 use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
-use crate::Endpoint;
+use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 use crate::transport::{Packet, SipTransport, Transport, TransportMessage, TransportType};
 

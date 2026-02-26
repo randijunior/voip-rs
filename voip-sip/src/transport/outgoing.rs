@@ -42,6 +42,14 @@ pub struct OutgoingResponse {
     pub encoded: Bytes,
 }
 
+impl OutgoingResponse {
+    pub fn encoded_str(&self) -> &str {
+        // SAFETY: An parsed OutgoingResponse is aways a correctly
+        // encoded UTF-8 string.
+        unsafe { std::str::from_utf8_unchecked(&self.encoded) }
+    }
+}
+
 impl ops::Deref for OutgoingResponse {
     type Target = Response;
     fn deref(&self) -> &Self::Target {

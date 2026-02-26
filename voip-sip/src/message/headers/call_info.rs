@@ -62,10 +62,10 @@ impl HeaderParser for CallInfo {
     fn parse(parser: &mut Parser) -> Result<Self> {
         let mut purpose: Option<String> = None;
         // must be an '<'
-        parser.next_byte()?;
+        parser.read()?;
         let url = parser.read_until(b'>');
         // must be an '>'
-        parser.next_byte()?;
+        parser.read()?;
         let url = str::from_utf8(url)?;
         let params = parse_header_param!(parser, PURPOSE = purpose);
 

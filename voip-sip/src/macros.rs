@@ -22,12 +22,12 @@ macro_rules! parse_param {
         $($name:ident = $var:expr),*
     ) =>  {{
         $scanner.skip_ws();
-        match $scanner.peek_byte() {
+        match $scanner.peek() {
             Some(b';') => {
                 let mut params = $crate::message::Params::new();
-                while let Some(b';') = $scanner.peek_byte() {
+                while let Some(b';') = $scanner.peek() {
                         // take ';' character
-                        let _ = $scanner.next_byte();
+                        let _ = $scanner.read();
                         let param = $func($scanner)?;
                         $(
                             if param.0 == $name {
@@ -67,8 +67,8 @@ macro_rules! comma_separated {
         $scanner.skip_ws();
         $body
 
-        while let Some(b',') = $scanner.peek_byte() {
-            $scanner.next_byte()?;
+        while let Some(b',') = $scanner.peek() {
+            $scanner.read()?;
             $scanner.skip_ws();
             $body
         }

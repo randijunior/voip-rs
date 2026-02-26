@@ -69,7 +69,7 @@ impl<'buf> Scanner<'buf> {
     /// Stops early if the end of the buffer is reached.
     pub fn advance_by(&mut self, n: usize) {
         for _ in 0..n {
-            if self.next_byte().is_none() {
+            if self.read().is_none() {
                 break;
             }
         }
@@ -78,15 +78,15 @@ impl<'buf> Scanner<'buf> {
     /// Reads the next byte and advance the scanner position.
     ///
     /// If the scanner has reached the end of the buffer, it returns `None`.
-    pub fn next_byte(&mut self) -> Option<u8> {
-        self.peek_byte().copied().map(|c| {
+    pub fn read(&mut self) -> Option<u8> {
+        self.peek().copied().map(|c| {
             self.bump(c);
             return c;
         })
     }
 
     pub fn next(&mut self) -> Result<u8> {
-        self.next_byte().ok_or(ScannerError::Eof)
+        self.read().ok_or(ScannerError::Eof)
     }
 
     pub fn is_eof(&self) -> bool {
@@ -98,7 +98,7 @@ impl<'buf> Scanner<'buf> {
     ///
     /// If the scanner has reached the end of the buffer, it returns `None`.
     #[inline(always)]
-    pub fn peek_byte(&self) -> Option<&u8> {
+    pub fn peek(&self) -> Option<&u8> {
         self.buffer.get(self.index)
     }
 
@@ -118,7 +118,7 @@ impl<'buf> Scanner<'buf> {
     ///
     /// Returns `None` if there are fewer than `n` bytes remaining.
     #[inline(always)]
-    pub fn peek_bytes(&self, n: usize) -> Option<&[u8]> {
+    pub fn peek_n(&self, n: usize) -> Option<&[u8]> {
         self.remaining().get(..n)
     }
 
@@ -179,12 +179,12 @@ impl<'buf> Scanner<'buf> {
             .or_else(|_| Err(ScannerError::InvalidNumber))
     }
 
-    /// Call the `predicate` closure for each element in the buffer and next_byte
+    /// Call the `predicate` closure for each element in the buffer and read
     /// the scanner while the closure returns `true`.
     #[inline(always)]
     pub fn read_while(&mut self, predicate: impl Fn(u8) -> bool) -> &'buf [u8] {
         let start = self.index;
-        while let Some(&c) = self.peek_byte() {
+        while let Some(&c) = self.peek() {
             if predicate(c) {
                 self.bump(c);
             } else {
@@ -192,14 +192,13 @@ impl<'buf> Scanner<'buf> {
             }
         }
         let end = self.index;
-        // SAFETY: We ensure `start..end` is valid because we only next_byted indexes
-        // within the buffer bounds.
+
         unsafe { self.buffer.get_unchecked(start..end) }
     }
 
-    /// peek_byte bytes in the buffer while the `predicate` returns true.
+    /// peek bytes in the buffer while the `predicate` returns true.
     ///
-    /// Does not next_byte the scanner position.
+    /// Does not read the scanner position.
     pub fn peek_while(&'buf self, predicate: impl Fn(u8) -> bool) -> &'buf [u8] {
         let buffer = self.remaining();
 
@@ -215,7 +214,7 @@ impl<'buf> Scanner<'buf> {
 
     /// Peek next byte if `condition` returns `true`.
     pub fn peek_if(&self, condition: impl Fn(u8) -> bool) -> Option<u8> {
-        self.peek_byte().filter(|&&byte| condition(byte)).copied()
+        self.peek().filter(|&&byte| condition(byte)).copied()
     }
 
     /// Read next bytes if equals to `expected`
@@ -238,7 +237,7 @@ impl<'buf> Scanner<'buf> {
     /// Returns `Err` if the next byte is not equal to `expected` or
     /// the end of the slice has been reached.
     pub fn must_read(&mut self, expected: u8) -> Result<()> {
-        match self.peek_byte().copied() {
+        match self.peek().copied() {
             Some(found) if expected == found => {
                 self.bump(found);
                 Ok(())
@@ -259,6 +258,11 @@ impl<'buf> Scanner<'buf> {
     #[inline]
     pub fn read_until_as_str(&mut self, byte: u8) -> Result<&'buf str> {
         self.read_while_as_str(|b| b != byte)
+    }
+
+    pub fn read_until_any_as_str(&mut self, slice: &[u8]) -> Result<&'buf str> {
+        self.read_while_as_str(|b| !slice.contains(&b))
+        
     }
 
     /// Reads bytes while `predicate` returns true and converts them to a string
@@ -300,8 +304,8 @@ impl<'buf> Scanner<'buf> {
     ///
     /// The byte readed.
     #[inline(always)]
-    pub fn next_byte_if(&mut self, predicate: impl FnOnce(u8) -> bool) -> Option<u8> {
-        match self.peek_byte() {
+    pub fn read_byte_if(&mut self, predicate: impl FnOnce(u8) -> bool) -> Option<u8> {
+        match self.peek() {
             Some(&matched) if predicate(matched) => {
                 self.bump(matched);
 
@@ -312,8 +316,8 @@ impl<'buf> Scanner<'buf> {
     }
 
     /// Consume and return the next byte if it is equal to `expected`.
-    pub fn advance_if_eq(&mut self, expected: u8) -> Option<u8> {
-        self.next_byte_if(|b| b == expected)
+    pub fn read_if_eq(&mut self, expected: u8) -> Option<u8> {
+        self.read_byte_if(|b| b == expected)
     }
 
     #[inline(always)]

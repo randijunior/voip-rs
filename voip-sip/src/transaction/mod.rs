@@ -4,15 +4,15 @@
 use std::time::Duration;
 
 pub use client::ClientTransaction;
-pub use manager::TransactionManager;
+pub use manager::TsxModule;
 pub use server::ServerTransaction;
 
 use crate::transport::incoming::{IncomingRequest, IncomingResponse};
 
-pub(crate) mod client;
+pub mod client;
 pub(crate) mod fsm;
 pub(crate) mod manager;
-pub(crate) mod server;
+pub mod server;
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 pub enum Role {

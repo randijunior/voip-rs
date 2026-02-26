@@ -19,7 +19,7 @@ impl HeaderParser for Timestamp {
         let time = parser.read_f32()?;
         parser.skip_ws();
 
-        let delay = if parser.peek_byte().is_some_and(|b| b.is_ascii_digit()) {
+        let delay = if parser.peek().is_some_and(|b| b.is_ascii_digit()) {
             Some(parser.read_f32()?)
         } else {
             None

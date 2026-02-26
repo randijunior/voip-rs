@@ -82,7 +82,7 @@ impl ClientTransaction {
         };
         let key = TransactionKey::new_key_3261(Role::UAC, method, branch);
 
-        endpoint.send_outgoing_request(&mut outgoing).await?;
+        endpoint.send_request(&mut outgoing).await?;
 
         let state = if method == Method::Invite {
             State::Calling
@@ -91,7 +91,7 @@ impl ClientTransaction {
         };
         let (sender, channel) = mpsc::channel(10);
 
-        endpoint.register_transaction(key.clone(), sender);
+        endpoint.transactions().add_transaction(key.clone(), sender);
 
         let uac = Self {
             key,
@@ -151,7 +151,7 @@ impl ClientTransaction {
                         Ok(Err(_)) => {
                             // retransmit
                             self.endpoint
-                                .send_outgoing_request(&mut self.request)
+                                .send_request(&mut self.request)
                                 .await?;
                             retrans_interval *= 2;
                             continue;
@@ -216,14 +216,14 @@ impl ClientTransaction {
             // send ACK
             let mut ack_request = self.endpoint.create_ack_request(&self.request, &response);
             self.endpoint
-                .send_outgoing_request(&mut ack_request)
+                .send_request(&mut ack_request)
                 .await?;
 
             // timer d fires
             let timer_d = Instant::now() + 64 * T1;
             tokio::spawn(async move {
                 while let Ok(Some(_)) = timeout_at(timer_d, self.channel.recv()).await {
-                    if let Err(err) = self.endpoint.send_outgoing_request(&mut ack_request).await {
+                    if let Err(err) = self.endpoint.send_request(&mut ack_request).await {
                         log::error!("Failed to retransmit: {}", err);
                     }
                 }

@@ -90,7 +90,7 @@ impl ParseError {
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        write!(f, "{:#?} {:#?}", self.kind, self.position)
     }
 }
 
@@ -112,8 +112,8 @@ pub enum DialogError {
     #[error("Method cannot establish a dialog")]
     InvalidMethod,
 
-    #[error("Missing To tag in 'To' header")]
-    MissingTagInToHeader,
+    #[error("'To' header must not have To tag")]
+    ToCannotHaveTag,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -127,4 +127,6 @@ pub enum TransactionError {
     #[error("Timeout reached after send message")]
     Timeout, //     #[error("The transaction is no longer valid")]
              // Invalid,
+    #[error("invalid State")]
+    InvalidState
 }

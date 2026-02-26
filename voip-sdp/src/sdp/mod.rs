@@ -1,4 +1,6 @@
 use crate::error::Error;
+use bytes::{BufMut, Bytes, BytesMut};
+use std::{fmt::{self, Formatter, Result as FmtResult}, io::{self, Write}};
 
 pub type Uri = String;
 
@@ -10,9 +12,9 @@ pub type EmailAddress = String;
 
 pub type PhoneNumber = String;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SessionDescription {
-    // v=  (protocol version)
+    // v=  (proto version)
     // o=  (originator and session identifier)
     pub origin: Origin,
     // s=  (session name)
@@ -30,13 +32,12 @@ pub struct SessionDescription {
     // b=* (zero or more bandwidth information lines)
     pub bandwidth_information: Vec<BandwidthInformation>,
     // a=* (zero or more session attribute lines)
-    pub attributes: Vec<SdpAttribute>,
+    pub attributes: Vec<Attribute>,
     // Time description
     pub time: Vec<TimeDescription>,
     //  Media description, if present
     pub media: Vec<MediaDescription>,
 }
-
 
 impl SessionDescription {
     pub fn set_origin(&mut self, origin: Origin) {
@@ -51,7 +52,7 @@ impl SessionDescription {
         if let Some(media) = self.last_media_desc_mut() {
             media.title = Some(info);
         } else {
-            self.set_information(info);
+            self.session_information = Some(info);
         }
     }
 
@@ -63,11 +64,11 @@ impl SessionDescription {
         self.uri = Some(uri);
     }
 
-    pub fn set_attr(&mut self, attr: SdpAttribute) {
+    pub fn set_attr(&mut self, attr: Attribute) {
         if let Some(media) = self.last_media_desc_mut() {
             media.attributes.push(attr);
         } else {
-            self.set_attr(attr);
+            self.attributes.push(attr);
         }
     }
 
@@ -102,49 +103,193 @@ impl SessionDescription {
         self.phone_number = Some(phone);
     }
     pub fn set_connection(&mut self, conn: ConnectionInformation) {
-        self.connection_information = Some(conn);
+        if let Some(media) = self.last_media_desc_mut() {
+            media.connection_information = Some(conn);
+        } else {
+            self.connection_information = Some(conn);
+        }
+    }
+
+    pub fn encode_sdp(&self) -> Result<Bytes, io::Error> {
+        let buf = BytesMut::new();
+        let mut writer = buf.writer();
+
+        // v=0
+        write!(writer, "v=0\r\n")?;
+
+        // o=<username> <sess-id> <sess-version> <nettype> <addrtype> <unicast-address>
+        write!(
+            writer,
+            "o={} {} {} {} {} {}\r\n",
+            self.origin.user,
+            self.origin.session_id,
+            self.origin.session_version,
+            self.origin.nettype,
+            self.origin.addrtype,
+            self.origin.unicast_address
+        )?;
+
+        // s=<session name>
+        write!(writer, "s={}\r\n", self.session_name)?;
+
+        // i=<session information>
+        if let Some(session_information) = &self.session_information {
+            write!(writer, "i={}\r\n", session_information)?;
+        }
+        // u=<uri>
+        if let Some(uri) = &self.uri {
+            write!(writer, "u={}\r\n", uri)?;
+        }
+        // e=<email-address>
+        if let Some(email_address) = &self.email_address {
+            write!(writer, "e={}\r\n", email_address)?;
+        }
+        // p=<phone-number>
+        if let Some(phone_number) = &self.phone_number {
+            write!(writer, "p={}\r\n", phone_number)?;
+        }
+        // c=<nettype> <addrtype> <connection-address>
+        if let Some(c) =  &self.connection_information {
+            write!(writer, "c={} {} {}\r\n", c.nettype, c.addrtype, c.conection_address)?;
+        }
+        //  b=<bwtype>:<bandwidth>
+        for b in self.bandwidth_information.iter() {
+            write!(writer, "b={}:{}\r\n", b.bwtype, b.bandwidth)?;
+        }
+        // t=<start-time> <stop-time>
+        for t in self.time.iter() {
+            write!(writer, "t={} {}\r\n", t.time_active.start_time, t.time_active.stop_time)?;
+            // r=<repeat interval> <active duration> <offsets from start-time>
+            for r in t.repeat_times.iter() {
+                write!(writer, "r={} {}", r.repeat_interval, r.active_duration)?;
+                for offset in r.offsets.iter() {
+                    write!(writer, " {}", offset)?;
+                }
+                write!(writer, "\r\n")?;
+            }
+        }
+
+        for attr in self.attributes.iter() {
+            match attr {
+                Attribute { name, value: Some(v) } => {
+                    write!(writer, "a={}:{}\r\n", name, v)?;
+                },
+                Attribute { name, value: None } => {
+                    write!(writer, "a={}\r\n", name)?;
+                }
+            }
+        }
+
+        // m=<media> <port> <proto> <fmt> ...
+        for m in self.media.iter() {
+            write!(writer, "m={} {}", m.media_type, m.port)?;
+            if let Some(n) = m.number_of_ports {
+                write!(writer, "/{}", n)?;
+            }
+            write!(writer, " {}", m.proto)?;
+            
+            for fmt in m.media_formats.iter() {
+                write!(writer, " {}", fmt)?;
+            }
+            write!(writer, "\r\n")?;
+
+            if let Some(title) = &m.title {
+                write!(writer, "t={}\r\n", title)?;
+            }
+
+             // c=* (connection information -- optional if included at session level)
+             if let Some(c) =  &m.connection_information {
+                write!(writer, "c={} {} {}\r\n", c.nettype, c.addrtype, c.conection_address)?;
+            }
+    
+             // b=* (zero or more bandwidth information lines)
+             for b in m.bandwidth_information.iter() {
+                write!(writer, "b={}:{}\r\n", b.bwtype, b.bandwidth)?;
+            }
+    
+            // a=* (zero or more media attribute lines)
+            for attr in m.attributes.iter() {
+                match attr {
+                    Attribute { name, value: Some(v) } => {
+                        write!(writer, "a={}:{}\r\n", name, v)?;
+                    },
+                    Attribute { name, value: None } => {
+                        write!(writer, "a={}\r\n", name)?;
+                    }
+                }
+            }
+        }
+
+        Ok(writer.into_inner().freeze())
     }
 }
 
-
+#[derive(Clone)]
 pub struct TimeDescription {
     // t=  (time the session is active)
     pub time_active: TimeActive,
 
     // r=* (zero or more repeat times)
     // r=<repeat interval> <active duration> <offsets from start-time>
-    pub repeat_times: Vec<RepeatTimes>
-
-    // z=* (optional time zone offset line)
+    pub repeat_times: Vec<RepeatTimes>, // z=* (optional time zone offset line)
 }
 
+#[derive(Clone)]
 pub struct RepeatTimes {
     pub repeat_interval: i64,
     pub active_duration: i64,
     pub offsets: Vec<i64>,
 }
 
+#[derive(Clone)]
 pub enum AddrType {
     IP4,
     IP6,
 }
 
+impl fmt::Display for AddrType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use self::AddrType::*;
+
+        f.write_str(match self {
+            IP4 => "IP4",
+            IP6 => "IP6"
+        })
+    }
+}
+
+#[derive(Clone)]
 pub enum NetType {
     IN,
     Other(String),
 }
 
+impl fmt::Display for NetType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use self::NetType::*;
+
+        f.write_str(match self {
+            IN => "IN",
+            Other(str) => str.as_str()
+        })
+    }
+}
+
+
+#[derive(Clone)]
 pub struct ConnectionInformation {
     pub nettype: NetType,
     pub addrtype: AddrType,
     pub conection_address: String,
 }
 
+#[derive(Clone)]
 pub struct TimeActive {
-    pub start_at: u64,
-    pub stop_at: u64,
+    pub start_time: u64,
+    pub stop_time: u64,
 }
 
+#[derive(Clone)]
 pub enum Bwtype {
     CT,
     AS,
@@ -153,17 +298,35 @@ pub enum Bwtype {
     TIAS,
     Other(String),
 }
+
+impl fmt::Display for Bwtype {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use self::Bwtype::*;
+
+        f.write_str(match self {
+            CT => "CT",
+            AS => "AS",
+            RR => "RR",
+            RS => "RS",
+            TIAS => "TIAS",
+            Other(str) => str.as_str()
+        })
+    }
+}
+
+#[derive(Clone)]
 pub struct BandwidthInformation {
     pub bwtype: Bwtype,
     pub bandwidth: u64,
 }
 
-pub struct SdpAttribute {
+#[derive(Clone)]
+pub struct Attribute {
     pub name: String,
     pub value: Option<String>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Origin {
     pub user: String,
     pub session_id: u64,
@@ -173,7 +336,7 @@ pub struct Origin {
     pub unicast_address: String,
 }
 
-
+#[derive(Clone, PartialEq, Eq)]
 pub enum MediaType {
     Audio,
     Video,
@@ -182,28 +345,66 @@ pub enum MediaType {
     Message,
 }
 
+impl fmt::Display for MediaType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use self::MediaType::*;
+
+        f.write_str(match self {
+            Audio => "audio",
+            Video => "video",
+            Text => "text",
+            Application => "application",
+            Message => "message",
+        })
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub enum SdpTransport {
     UDP,
     RTPAVP,
+    RTPAVPF,
     RTPSAVP,
     RTPSAVPF,
 }
 
+impl fmt::Display for SdpTransport {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use self::SdpTransport::*;
 
+        f.write_str(match self {
+            UDP => "udp",
+            RTPAVP => "RTP/AVP",
+            RTPAVPF => "RTP/AVPF",
+            RTPSAVP => "RTP/SAVP",
+            RTPSAVPF => "RTP/SAVPF",
+        })
+    }
+}
+
+#[derive(Clone)]
 pub struct MediaDescription {
     // m=  (media name and transport address)
     // m=<media> <port>/<number of ports> <proto> <fmt>
-    pub media: MediaType,
-    pub protocol: SdpTransport,
+    pub media_type: MediaType,
+    pub proto: SdpTransport,
     pub port: u16,
     pub number_of_ports: Option<usize>,
     pub media_formats: Vec<String>,
     // i=* (media title)
     pub title: Option<String>,
     // c=* (connection information -- optional if included at session level)
-    pub connection_info: Option<ConnectionInformation>,
+    pub connection_information: Option<ConnectionInformation>,
     // b=* (zero or more bandwidth information lines)
     pub bandwidth_information: Vec<BandwidthInformation>,
     // a=* (zero or more media attribute lines)
-    pub attributes: Vec<SdpAttribute>,
+    pub attributes: Vec<Attribute>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RtpMap {
+    pub payload_type: String,
+    pub enc_name: String,
+    pub clock_rate: u32,
+    pub param: Option<String>
 }

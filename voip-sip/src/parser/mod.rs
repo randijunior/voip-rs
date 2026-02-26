@@ -206,7 +206,7 @@ impl<'buf> Parser<'buf> {
     pub fn parse_sip_msg(&mut self) -> Result<SipMessage> {
         // Might be enough for most messages.
         let minimal_header_size = 7;
-        let mut sip_message = if matches!(self.scanner.peek_bytes(B_SIPV2.len()), Some(B_SIPV2)) {
+        let mut sip_message = if matches!(self.scanner.peek_n(B_SIPV2.len()), Some(B_SIPV2)) {
             // Is an status line, e.g, "SIP/2.0 200 OK".
             // TODO: Add "match" here.
             let status_line = self.parse_status_line()?;
@@ -419,7 +419,7 @@ impl<'buf> Parser<'buf> {
                 return self.parse_error(Kind::Header);
             }
 
-            if matches!(self.scanner.peek_byte(), Some(b'\r') | Some(b'\n') | None) {
+            if matches!(self.scanner.peek(), Some(b'\r') | Some(b'\n') | None) {
                 break 'headers;
             }
         }
@@ -466,7 +466,7 @@ impl<'buf> Parser<'buf> {
     pub fn parse_sip_uri(&mut self, parse_params: bool) -> Result<SipUri> {
         self.skip_ws();
 
-        match self.scanner.peek_bytes(3) {
+        match self.scanner.peek_n(3) {
             Some(SIP) | Some(SIPS) => {
                 let uri = self.parse_uri(parse_params)?;
                 Ok(SipUri::Uri(uri))
@@ -518,7 +518,7 @@ impl<'buf> Parser<'buf> {
         let user_param = user_param.map(|u: &str| u.into());
         let maddr_param = maddr_param.and_then(|m: &str| m.parse::<Host>().ok());
 
-        let headers = if let Some(b'?') = self.scanner.advance_if_eq(b'?') {
+        let headers = if let Some(b'?') = self.scanner.read_if_eq(b'?') {
             // The uri has header parameters.
             Some(self.parse_headers_in_sip_uri()?)
         } else {
@@ -554,16 +554,16 @@ impl<'buf> Parser<'buf> {
     }
 
     pub fn parse_host_port(&mut self) -> Result<HostPort> {
-        let host = match self.peek_byte() {
+        let host = match self.peek() {
             Some(b'[') => {
                 // Is a Ipv6 host
-                self.next_byte()?;
+                self.read()?;
                 // the '[' and ']' characters are removed from the host
                 let host = self
                     .scanner
                     .read_while_as_str(|b| b != b']')
                     .or_else(|_| self.parse_error(Kind::Host))?;
-                self.next_byte()?;
+                self.read()?;
 
                 if let Ok(ipv6_addr) = host.parse() {
                     Host::IpAddr(ipv6_addr)
@@ -629,7 +629,7 @@ impl<'buf> Parser<'buf> {
         }
         // We have user part in uri.
         let user = self.read_user_str().into();
-        let pass = if let Some(b':') = self.scanner.advance_if_eq(b':') {
+        let pass = if let Some(b':') = self.scanner.read_if_eq(b':') {
             Some(self.read_pass_as_str().into())
         } else {
             None
@@ -643,7 +643,7 @@ impl<'buf> Parser<'buf> {
     }
 
     fn parse_port(&mut self) -> Result<Option<u16>> {
-        let Some(b':') = self.scanner.advance_if_eq(b':') else {
+        let Some(b':') = self.scanner.read_if_eq(b':') else {
             return Ok(None);
         };
         let port = self
@@ -664,7 +664,7 @@ impl<'buf> Parser<'buf> {
             let param = self.parse_hdr_in_uri()?;
             params.push(param);
 
-            if self.scanner.advance_if_eq(b'&').is_none() {
+            if self.scanner.read_if_eq(b'&').is_none() {
                 break;
             }
         }
@@ -672,11 +672,11 @@ impl<'buf> Parser<'buf> {
     }
 
     fn parse_display_name(&mut self) -> Result<Option<DisplayName>> {
-        match self.scanner.peek_byte() {
+        match self.scanner.peek() {
             Some(b'"') => {
-                self.next_byte()?; // consume '"'
+                self.read()?; // consume '"'
                 let name = self.scanner.read_while(|b| b != b'"');
-                self.next_byte()?; // consume closing '"'
+                self.read()?; // consume closing '"'
                 Ok(Some(DisplayName::new(str::from_utf8(name)?.into())))
             }
             Some(b'<') => Ok(None), // no display name
@@ -700,15 +700,15 @@ impl<'buf> Parser<'buf> {
 
     #[inline]
     fn parse_header_end(&mut self) -> bool {
-        !(self.scanner.advance_if_eq(b'\r').is_none()
-            || self.scanner.advance_if_eq(b'\n').is_none())
+        !(self.scanner.read_if_eq(b'\r').is_none()
+            || self.scanner.read_if_eq(b'\n').is_none())
     }
 
     #[inline]
     pub(crate) fn parse_token(&mut self) -> Result<&'buf str> {
-        if let Some(b'"') = self.scanner.advance_if_eq(b'"') {
+        if let Some(b'"') = self.scanner.read_if_eq(b'"') {
             let value = self.scanner.read_while(|b| b != b'"');
-            self.next_byte()?;
+            self.read()?;
 
             Ok(str::from_utf8(value)?)
         } else {
@@ -718,8 +718,8 @@ impl<'buf> Parser<'buf> {
     }
 
     #[inline]
-    pub(crate) fn next_byte(&mut self) -> Result<u8> {
-        self.scanner.next_byte().ok_or_else(|| {
+    pub(crate) fn read(&mut self) -> Result<u8> {
+        self.scanner.read().ok_or_else(|| {
             self.parse_error::<u8>(Kind::Scanner(ScannerError::Eof))
                 .unwrap_err()
         })
@@ -838,8 +838,8 @@ impl<'buf> Parser<'buf> {
     }
 
     #[inline]
-    pub(crate) fn peek_byte(&self) -> Option<&u8> {
-        self.scanner.peek_byte()
+    pub(crate) fn peek(&self) -> Option<&u8> {
+        self.scanner.peek()
     }
 
     #[inline]
@@ -920,15 +920,15 @@ impl<'buf> Parser<'buf> {
     ) -> Result<(&'buf str, Option<&'buf str>)> {
         self.skip_ws();
         let name = unsafe { self.scanner.read_while_as_str_unchecked(&func) };
-        let Some(b'=') = self.scanner.peek_byte() else {
+        let Some(b'=') = self.scanner.peek() else {
             return Ok((name, None));
         };
-        self.next_byte()?;
-        let value = if let Some(b'"') = self.scanner.peek_byte() {
+        self.read()?;
+        let value = if let Some(b'"') = self.scanner.peek() {
             // TODO: skip ignore \"\"
-            self.next_byte()?;
+            self.read()?;
             let value = self.scanner.read_while(|b| b != b'"');
-            self.next_byte()?;
+            self.read()?;
             str::from_utf8(value)?
         } else {
             unsafe { self.scanner.read_while_as_str_unchecked(func) }

@@ -1,52 +1,47 @@
 #![warn(missing_docs)]
 //! SIP Endpoint
 
+mod builder;
+mod module;
+
+pub use module::{ReceivedRequest, ReceivedResponse};
+pub use module::Module;
+
+pub use builder::EndpointBuilder;
+
+use std::any::type_name;
 use std::borrow::Cow;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-pub use builder::EndpointBuilder;
 use bytes::Bytes;
 use tokio::net::ToSocketAddrs;
-use tokio::sync::mpsc;
-use utils::DnsResolver;
-use uuid::Uuid;
 
-use crate::error::TransactionError;
+use utils::{DnsResolver, ToTake};
+
+
 use crate::message::headers::{
-    CSeq, CallId, Contact, From, Header, Headers, MaxForwards, Route, To, Via,
+    CSeq, Header, Headers, Route,
 };
 use crate::message::{
-    CodeClass, DomainName, Host, HostPort, MandatoryHeaders, NameAddr, ReasonPhrase, Request,
-    RequestLine, Response, SipBody, SipMessage, SipUri, StatusCode, StatusLine, Uri, UriBuilder,
+    DomainName, Host, MandatoryHeaders, NameAddr, ReasonPhrase, Request, Response, SipMessage,
+    StatusCode, StatusLine, Uri,
 };
-use crate::transaction::manager::{TransactionKey, TransactionManager};
-use crate::transaction::{ClientTransaction, ServerTransaction, TransactionMessage};
+use crate::transaction::manager::{TsxModule};
+use crate::transaction::{ServerTransaction};
 use crate::transport::incoming::{IncomingInfo, IncomingRequest, IncomingResponse};
 use crate::transport::outgoing::{Encode, OutgoingRequest, OutgoingResponse, TargetTransportInfo};
 use crate::transport::tcp::TcpListener;
 use crate::transport::udp::UdpTransport;
 use crate::transport::ws::WebSocketListener;
-use crate::transport::{SipTransport, Transport, TransportManager, TransportMessage};
-use crate::ua::UA;
-use crate::ua::dialog::Dialog;
-use crate::{Method, Result};
-
-mod builder;
-
-/// A trait which provides a way to extend the SIP endpoint functionalities.
-#[async_trait::async_trait]
-#[allow(unused_variables)]
-pub trait EndpointHandler: Sync + Send + 'static {
-    /// Called when an inbound SIP request is received.
-    async fn handle(&self, request: IncomingRequest, endpoint: &Endpoint);
-}
+use crate::transport::{SipTransport, Transport, TransportModule, TransportMessage};
+use crate::ua::dialog::UaModule;
+use crate::endpoint::module::Modules;
+use crate::{Result, Method};
 
 struct EndpointInner {
-    /// The transport layer for the endpoint.
-    transport: TransportManager,
-    /// The transaction layer for the endpoint.
-    transaction: Option<TransactionManager>,
+    /// The transport module for the endpoint.
+    transport: TransportModule,
     /// The name of the endpoint.
     name: String,
     /// The capability header list.
@@ -54,8 +49,7 @@ struct EndpointInner {
     /// The resolver for DNS lookups.
     resolver: DnsResolver,
     /// The list of services registered.
-    handler: Option<Box<dyn EndpointHandler>>,
-    user_agent: Option<UA>,
+    modules: Modules,
 }
 
 /// A SIP endpoint.
@@ -82,6 +76,27 @@ impl Endpoint {
     /// Get the endpoint name.
     pub fn get_name(&self) -> &String {
         &self.inner.name
+    }
+
+    pub fn module<M: module::Module>(&self) -> &M {
+        self.inner
+            .modules
+            .find_module()
+            .ok_or_else(|| format!("endpoint missing module {}", type_name::<M>()))
+            .unwrap()
+    }
+
+    pub async fn respond(
+        &self,
+        request: &IncomingRequest,
+        code: StatusCode,
+        reason: Option<ReasonPhrase>,
+    ) -> Result<()> {
+        let mut response = self.create_response(request, code, reason);
+
+        self.send_response(&mut response).await?;
+
+        Ok(())
     }
 
     /// Creates a new SIP response based on an incoming
@@ -156,10 +171,6 @@ impl Endpoint {
         }
     }
 
-    pub fn new_server_transaction(&self, request: IncomingRequest) -> ServerTransaction {
-        ServerTransaction::new(request, self.clone())
-    }
-
     pub(crate) fn create_ack_request(
         &self,
         outgoing: &OutgoingRequest,
@@ -191,7 +202,7 @@ impl Endpoint {
     }
 
     /// Send the request.
-    pub async fn send_outgoing_request(&self, request: &mut OutgoingRequest) -> Result<()> {
+    pub async fn send_request(&self, request: &mut OutgoingRequest) -> Result<()> {
         if request.encoded.is_empty() {
             request.encoded = request.encode()?;
         }
@@ -203,6 +214,10 @@ impl Endpoint {
             request.target_info.target
         );
 
+        for module in self.inner.modules.modules() {
+            module.on_send_request(request).await;
+        }
+
         request
             .target_info
             .transport
@@ -212,7 +227,7 @@ impl Endpoint {
         Ok(())
     }
 
-    pub async fn send_outgoing_response(&self, response: &mut OutgoingResponse) -> Result<()> {
+    pub async fn send_response(&self, response: &mut OutgoingResponse) -> Result<()> {
         if response.encoded.is_empty() {
             response.encoded = response.encode()?;
         }
@@ -223,6 +238,10 @@ impl Endpoint {
             response.target_info.target
         );
 
+        for module in self.inner.modules.modules() {
+            module.on_send_response(response).await;
+        }
+
         response
             .target_info
             .transport
@@ -230,88 +249,6 @@ impl Endpoint {
             .await?;
 
         Ok(())
-    }
-
-    // https://www.rfc-editor.org/rfc/rfc3261#section-8.1.1
-    // A valid SIP request formulated by a UAC MUST, at a minimum, contain
-    // the following header fields: To, From, CSeq, Call-ID, Max-Forwards,
-    // and Via
-    fn ensure_mandatory_headers(&self, request: &mut Request, target_info: &TargetTransportInfo) {
-        let mut headers: [Option<Header>; 6] = [const { None }; 6];
-        let TargetTransportInfo { target, transport } = target_info;
-        let request_headers = &mut request.headers;
-
-        let mut exists_via = false;
-        let mut exists_cseq = false;
-        let mut exists_from = false;
-        let mut exists_call_id = false;
-        let mut exists_to = false;
-        let mut exists_max_fowards = false;
-
-        for header in request_headers.iter() {
-            match header {
-                Header::Via(_) if !exists_via => exists_via = true,
-                Header::From(_) => exists_from = true,
-                Header::To(_) => exists_to = true,
-                Header::CallId(_) => exists_call_id = true,
-                Header::CSeq(_) => exists_cseq = true,
-                Header::MaxForwards(_) => exists_max_fowards = true,
-                _ => (),
-            }
-        }
-
-        if !exists_via {
-            let sent_by = transport.local_addr().into();
-            let transport = transport.transport_type();
-            let branch = crate::generate_branch();
-            let via = Via::new_with_transport(transport, sent_by, Some(branch));
-
-            headers[0] = Some(Header::Via(via));
-        }
-
-        if !exists_from {
-            let host = transport.local_addr().into();
-            let uri = UriBuilder::new()
-                .with_host(host)
-                .with_scheme(request.req_line.uri.scheme)
-                .build();
-            let name_adddr = NameAddr::new(uri);
-            let from = From::new(SipUri::NameAddr(name_adddr));
-
-            headers[1] = Some(Header::From(from));
-        }
-
-        if !exists_to {
-            let to_uri = request.req_line.uri.clone();
-            let name_addr = NameAddr::new(to_uri);
-            let to = To::new(SipUri::NameAddr(name_addr));
-
-            headers[2] = Some(Header::To(to));
-        }
-
-        if !exists_cseq {
-            let cseq = CSeq::new(1, request.req_line.method);
-
-            headers[3] = Some(Header::CSeq(cseq));
-        }
-
-        if !exists_call_id {
-            let id = Uuid::new_v4();
-            let call_id_str = format!("{}@{}", id, transport.local_addr());
-            let call_id = CallId::new(call_id_str);
-
-            headers[4] = Some(Header::CallId(call_id));
-        }
-
-        if !exists_max_fowards {
-            let max_forwards = MaxForwards::new(70);
-
-            headers[5] = Some(Header::MaxForwards(max_forwards));
-        }
-
-        let new_headers = headers.into_iter().flatten();
-
-        request_headers.splice(0..0, new_headers);
     }
 
     fn process_route_set<'a>(&self, request: &'a mut Request) -> Cow<'a, Uri> {
@@ -379,8 +316,6 @@ impl Endpoint {
 
         let target_info = TargetTransportInfo { target, transport };
 
-        self.ensure_mandatory_headers(&mut request, &target_info);
-
         Ok(OutgoingRequest {
             request,
             target_info,
@@ -407,7 +342,7 @@ impl Endpoint {
         Ok(())
     }
 
-    pub async fn start_ws_transport(&self, addr: SocketAddr) -> Result<()> {
+    pub async fn start_ws_transport<A: ToSocketAddrs>(&self, addr: A) -> Result<()> {
         let ws = WebSocketListener::bind(addr).await?;
         log::info!(
             "SIP WS listener ready for incoming connections at: {}",
@@ -440,14 +375,14 @@ impl Endpoint {
                     mandatory_headers: headers,
                     transport: message,
                 };
-                self.process_request(IncomingRequest {
+                self.on_request(IncomingRequest {
                     request,
                     incoming_info: Box::new(info),
                 })
                 .await?;
             }
-            Ok(SipMessage::Response(res)) => {
-                let mut headers: MandatoryHeaders = res.headers().try_into()?;
+            Ok(SipMessage::Response(response)) => {
+                let mut headers: MandatoryHeaders = response.headers().try_into()?;
                 // 4. Server Behavior
                 // the server MUST insert a "received" parameter containing the source
                 // IP address that the request came from.
@@ -456,8 +391,8 @@ impl Endpoint {
                     mandatory_headers: headers,
                     transport: message,
                 };
-                self.process_response(IncomingResponse {
-                    response: res,
+                self.on_response(IncomingResponse {
+                    response,
                     incoming_info: Box::new(info),
                 })
                 .await?;
@@ -472,10 +407,6 @@ impl Endpoint {
         Ok(self.inner.resolver.resolve(domain.as_str()).await?)
     }
 
-    pub(crate) fn dns_resolver(&self) -> &DnsResolver {
-        &self.inner.resolver
-    }
-
     pub(crate) async fn lookup_address(&self, host: &Host) -> Result<IpAddr> {
         match host {
             Host::DomainName(domain) => self.dns_lookup(domain).await,
@@ -483,53 +414,28 @@ impl Endpoint {
         }
     }
 
-    // https://datatracker.ietf.org/doc/html/rfc3261#section-18.2.2
-    // https://datatracker.ietf.org/doc/html/rfc3581s
-    pub async fn get_outbound_addr(
-        &self,
-        via: &Via,
-        transport: &Transport,
-    ) -> Result<(SocketAddr, Transport)> {
-        if transport.is_reliable() {
-            // Tcp, TLS, etc..
-            return Ok((transport.remote_addr().unwrap(), transport.clone()));
-        }
-
-        if let Some(maddr) = &via.maddr {
-            let port = via.sent_by.port.unwrap_or(5060);
-            let ip = self.lookup_address(maddr).await?;
-            let addr = SocketAddr::new(ip, port);
-
-            return Ok((addr, transport.clone()));
-        } else if let Some(rport) = via.rport {
-            let ip = via.received.unwrap();
-            let addr = SocketAddr::new(ip, rport);
-            return Ok((addr, transport.clone()));
-        } else {
-            let ip = via
-                .received
-                .expect("Missing received parameter on 'Via' header");
-            let port = via.sent_by.port.unwrap_or(5060);
-            let addr = SocketAddr::new(ip, port);
-            return Ok((addr, transport.clone()));
-        }
-    }
-
-    pub(crate) async fn process_response(&self, response: IncomingResponse) -> Result<()> {
+    async fn on_response(&self, response: IncomingResponse) -> Result<()> {
         log::debug!(
             "<= Response ({} {})",
             response.status().as_u16(),
             response.reason().as_str()
         );
 
-        let response = match self.inner.transaction {
-            Some(ref tsx_layer) => tsx_layer.handle_response(response).await,
-            None => Some(response),
-        };
+        let mut response = Some(response);
+
+        for module in self.inner.modules.modules() {
+            module
+                .on_receive_response(ReceivedResponse::new(ToTake::new(&mut response)), self)
+                .await;
+
+            if response.is_none() {
+                break;
+            }
+        }
 
         if let Some(response) = response {
             log::info!(
-                "Response ({} {}) from /{} was unhandled",
+                "Response ({} {}) from /{} was unhandled by any module",
                 response.status().as_u16(),
                 response.reason().as_str(),
                 response.incoming_info.transport.packet.source
@@ -538,35 +444,26 @@ impl Endpoint {
         Ok(())
     }
 
-    pub(crate) async fn dispatch_to_server_transaction(
-        &self,
-        request: IncomingRequest,
-    ) -> Option<IncomingRequest> {
-        match self.inner.transaction {
-            Some(ref tsx_layer) => tsx_layer.receive(request).await,
-            None => Some(request),
-        }
-    }
-
-    pub(crate) async fn process_request(&self, request: IncomingRequest) -> Result<()> {
+    async fn on_request(&self, request: IncomingRequest) -> Result<()> {
         log::debug!(
             "<= Request {} from /{}",
             request.request.method(),
             request.incoming_info.transport.packet.source
         );
 
-        let msg = match self.inner.transaction {
-            Some(ref tsx_layer) => tsx_layer.receive(request).await,
-            None => Some(request),
-        };
+        let mut request = Some(request);
 
-        let Some(msg) = msg else {
-            return Ok(());
-        };
+        for module in self.inner.modules.modules() {
+            module
+                .on_receive_request(module::ReceivedRequest::new(ToTake::new(&mut request)), self)
+                .await;
 
-        if let Some(handler) = &self.inner.handler {
-            handler.handle(msg, self).await;
-        } else {
+            if request.is_none() {
+                break;
+            }
+        }
+
+        if let Some(msg) = request {
             log::debug!(
                 "Request ({}, cseq={}) from /{} was unhandled",
                 msg.request.method(),
@@ -578,26 +475,19 @@ impl Endpoint {
         Ok(())
     }
 
-    pub(crate) fn transactions(&self) -> &TransactionManager {
-        self.inner
-            .transaction
-            .as_ref()
-            .expect("Transaction Manager not set")
+    pub(crate) fn dns_resolver(&self) -> &DnsResolver {
+        &self.inner.resolver
     }
 
-    pub(crate) fn register_transaction(
-        &self,
-        key: TransactionKey,
-        entry: mpsc::Sender<TransactionMessage>,
-    ) {
-        self.transactions().add_transaction(key, entry);
-    }
-
-    pub(crate) fn transports(&self) -> &TransportManager {
+    pub(crate) fn transports(&self) -> &TransportModule {
         &self.inner.transport
     }
 
-    pub(crate) fn ua(&self) -> &UA {
-        self.inner.user_agent.as_ref().expect("User Agent not set")
+    pub(crate) fn transactions(&self) -> &TsxModule {
+        self.module::<TsxModule>()
+    }
+
+    pub(crate) fn dialogs(&self) -> &UaModule {
+        self.module::<UaModule>()
     }
 }

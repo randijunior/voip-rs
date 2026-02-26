@@ -53,9 +53,9 @@ impl HeaderParser for AlertInfo {
     fn parse(parser: &mut Parser) -> Result<Self> {
         parser.skip_ws();
 
-        parser.next_byte()?;
+        parser.read()?;
         let url = parser.read_until(b'>');
-        parser.next_byte()?;
+        parser.read()?;
 
         let url = str::from_utf8(url)?.into();
         let params = parse_header_param!(parser);

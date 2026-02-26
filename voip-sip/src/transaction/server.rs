@@ -5,7 +5,6 @@ use tokio::time::{Instant, sleep, timeout_at};
 use tokio_util::either::Either;
 
 use crate::Method;
-use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 use crate::message::{CodeClass, ReasonPhrase, StatusCode};
 use crate::transaction::fsm::{State, StateMachine};
@@ -13,6 +12,7 @@ use crate::transaction::manager::TransactionKey;
 use crate::transaction::{T1, T2, T4, TransactionMessage};
 use crate::transport::incoming::IncomingRequest;
 use crate::transport::outgoing::OutgoingResponse;
+use crate::endpoint::Endpoint;
 
 /// A Server Transaction.
 ///
@@ -21,7 +21,7 @@ pub struct ServerTransaction {
     transaction_key: TransactionKey,
     endpoint: Endpoint,
     state_machine: StateMachine,
-    request: IncomingRequest,
+    pub(crate) request: IncomingRequest,
     receiver: Option<mpsc::Receiver<TransactionMessage>>,
     provisonal_retrans_handle: Option<ProvisionalRetransHandle>,
 }
@@ -37,7 +37,7 @@ impl ServerTransaction {
     /// # Panics
     ///
     /// Panics if request method is `ACK`.
-    pub(crate) fn new(request: IncomingRequest, endpoint: Endpoint) -> Self {
+    pub fn new(request: IncomingRequest, endpoint: Endpoint) -> Self {
         assert_ne!(
             request.req_line.method,
             Method::Ack,
@@ -54,7 +54,7 @@ impl ServerTransaction {
         let (sender, receiver) = mpsc::channel(10);
         let transaction_key = TransactionKey::from_request(&request);
 
-        endpoint.register_transaction(transaction_key.clone(), sender);
+        endpoint.transactions().add_transaction(transaction_key.clone(), sender);
 
         Self {
             endpoint,
@@ -150,7 +150,7 @@ impl ServerTransaction {
 
         self.send_response(&mut response).await?;
 
-        if self.request.request.req_line.method == Method::Invite {
+        if self.request.req_line.method == Method::Invite {
             if let 200..299 = response.status().as_u16() {
                 self.state_machine.set_state(State::Terminated);
                 return Ok(());
@@ -180,7 +180,7 @@ impl ServerTransaction {
                     tokio::select! {
                         _ = timer_g.as_mut() => {
                            let _res =  self.endpoint
-                            .send_outgoing_response(&mut response)
+                            .send_response(&mut response)
                             .await;
                         retrans_count += 1;
 
@@ -205,7 +205,7 @@ impl ServerTransaction {
                                 return;
                             }
                             let _res =  self.endpoint
-                            .send_outgoing_response(&mut response)
+                            .send_response(&mut response)
                             .await;
                         }
                     }
@@ -230,7 +230,9 @@ impl ServerTransaction {
 
             tokio::spawn(async move {
                 while let Ok(Some(_)) = timeout_at(timer_j, channel.recv()).await {
-                    let _result = self.endpoint.send_outgoing_response(&mut response).await;
+                    if let Err(err) = self.send_response(&mut response).await {
+                        log::error!("Failed to send response: {}", err);
+                    }
                 }
                 self.state_machine.set_state(State::Terminated);
             });
@@ -251,12 +253,19 @@ impl ServerTransaction {
         &self.transaction_key
     }
 
+    pub(crate) fn sender(&self) -> mpsc::Sender<TransactionMessage> {
+        self.endpoint
+            .transactions()
+            .get_entry(&self.transaction_key)
+            .expect("Must Exists entry")
+    }
+
     pub fn state_machine_mut(&mut self) -> &mut StateMachine {
         &mut self.state_machine
     }
 
     async fn send_response(&self, response: &mut OutgoingResponse) -> Result<()> {
-        self.endpoint.send_outgoing_response(response).await?;
+        self.endpoint.send_response(response).await?;
         Ok(())
     }
 

@@ -19,7 +19,7 @@ const TIME_ACTIVE: SdpField = b't';
 const REPEAT_TIME: SdpField = b'r';
 const TIME_ZONE_OFFSET: SdpField = b'z';
 const MEDIA_DESCRIPTION: SdpField = b'm';
-const SDP_ATTRIBUTE: SdpField = b'a';
+const ATTRIBUTE: SdpField = b'a';
 
 const TOKEN: &str = "!#$%&'*+-.^_`{|}~";
 const ALPHANUMERIC: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -53,7 +53,7 @@ impl<'buf> Parser<'buf> {
             let sdp_field = self.read_field()?;
 
             match sdp_field {
-                SDP_ATTRIBUTE => {
+                ATTRIBUTE => {
                     let attr = self.parse_attribute()?;
                     sdp.set_attr(attr);
                 }
@@ -140,15 +140,17 @@ impl<'buf> Parser<'buf> {
             .scanner
             .read_while_as_str(|b| !b.is_ascii_whitespace())?
             .to_owned();
+        self.handle_ws();
         let session_id = self.scanner.read_u64()?;
         self.handle_ws();
         let session_version = self.scanner.read_u64()?;
         self.handle_ws();
-        let nettype = self.read_line()?.to_owned();
+        let nettype = self.scanner.read_until_as_str(b' ')?.to_owned();
         self.handle_ws();
-        let addrtype = self.read_line()?.to_owned();
+        let addrtype = self.scanner.read_until_as_str(b' ')?.to_owned();
         self.handle_ws();
-        let unicast_address = self.read_line()?.to_owned();
+        let unicast_address = self.scanner.read_until_any_as_str(b" \t\r\n")?.to_owned();
+        self.handle_ws();
 
         Ok(Origin {
             user,
@@ -171,7 +173,7 @@ impl<'buf> Parser<'buf> {
 
         self.handle_ws();
 
-        let addrtype = match self.scanner.peek_bytes(3) {
+        let addrtype = match self.scanner.peek_n(3) {
             Some(b"IP4") => AddrType::IP4,
             Some(b"IP6") => AddrType::IP6,
             _ => {
@@ -195,7 +197,7 @@ impl<'buf> Parser<'buf> {
     }
 
     fn parse_media_description(&mut self) -> Result<MediaDescription> {
-        let media = match self.read_token() {
+        let media_type = match self.read_token() {
             "audio" => MediaType::Audio,
             "video" => MediaType::Video,
             "text" => MediaType::Text,
@@ -208,9 +210,10 @@ impl<'buf> Parser<'buf> {
 
         let bytes = self.scanner.read_while(|b| !is_space(b));
 
-        let protocol = match bytes {
+        let proto = match bytes {
             b"UDP" | b"udp" => SdpTransport::UDP,
             b"RTP/AVP" => SdpTransport::RTPAVP,
+            b"RTP/AVPF" => SdpTransport::RTPAVPF,
             b"RTP/SAVP" => SdpTransport::RTPSAVP,
             b"RTP/SAVPF" => SdpTransport::RTPSAVPF,
             _ => {
@@ -220,38 +223,38 @@ impl<'buf> Parser<'buf> {
 
         let mut media_formats = vec![];
 
-        while self.scanner.next_byte_if(is_space).is_some() {
+        while self.scanner.read_byte_if(is_space).is_some() {
             let fmt = self.read_token();
 
             media_formats.push(fmt.to_owned());
 
-            if matches!(self.scanner.peek_byte(), Some(b'\r') | Some(b'\n') | None) {
+            if matches!(self.scanner.peek(), Some(b'\r') | Some(b'\n') | None) {
                 break;
             }
         }
 
         Ok(MediaDescription {
-            media,
+            media_type,
             port,
             number_of_ports: None,
-            protocol,
+            proto,
             media_formats,
             title: None,
-            connection_info: None,
+            connection_information: None,
             bandwidth_information: vec![],
             attributes: vec![],
         })
     }
 
     fn parse_time(&mut self) -> Result<TimeDescription> {
-        let start_at = self.scanner.read_u64()?;
+        let start_time = self.scanner.read_u64()?;
 
         self.scanner.must_read(b' ')?;
 
-        let stop_at = self.scanner.read_u64()?;
+        let stop_time = self.scanner.read_u64()?;
 
         Ok(TimeDescription {
-            time_active: TimeActive { start_at, stop_at },
+            time_active: TimeActive { start_time, stop_time },
             repeat_times: vec![],
         })
     }
@@ -263,11 +266,11 @@ impl<'buf> Parser<'buf> {
 
         let mut offsets = vec![];
 
-        while self.scanner.next_byte_if(is_space).is_some() {
+        while self.scanner.read_byte_if(is_space).is_some() {
             let offset = self.scanner.read_i64()?;
             offsets.push(offset);
 
-            if matches!(self.scanner.peek_byte(), Some(b'\r') | Some(b'\n') | None) {
+            if matches!(self.scanner.peek(), Some(b'\r') | Some(b'\n') | None) {
                 break;
             }
         }
@@ -293,19 +296,40 @@ impl<'buf> Parser<'buf> {
         Ok(BandwidthInformation { bwtype, bandwidth })
     }
 
-    fn parse_attribute(&mut self) -> Result<SdpAttribute> {
+    fn parse_attribute(&mut self) -> Result<Attribute> {
         let attr_name = self.read_token().to_owned();
 
-        let attr_value = if self.scanner.advance_if_eq(b':').is_some() {
+        let attr_value = if self.scanner.read_if_eq(b':').is_some() {
             Some(self.read_line()?.to_owned())
         } else {
             None
         };
 
-        Ok(SdpAttribute {
+        Ok(Attribute {
             name: attr_name,
             value: attr_value,
         })
+    }
+
+    pub fn parse_rtpmap(&mut self) -> Result<RtpMap> {
+        // a=rtpmap:98 L16/16000/2.
+        let payload_type = self.read_token().to_owned();
+        self.handle_ws();
+        let encoding_name = self.read_token().to_owned();
+
+        self.scanner.must_read(b'/')?;
+
+        let clock_rate = self.scanner.read_u32()?;
+
+        let param = if self.scanner.read_if_eq(b'/').is_some() {
+            Some(self.read_token().to_owned())
+        } else {
+            None
+        };
+
+        self.handle_new_line();
+
+        Ok(RtpMap { payload_type, enc_name: encoding_name, clock_rate, param: param })
     }
 
     #[inline]
@@ -361,5 +385,45 @@ mod tests {
         };
 
         Parser::parse(example_sdp).unwrap();
+    }
+
+    #[test]
+    fn test_parse_sdp() {
+        let sdp = concat! {
+            "v=0\r\n",
+            "o=10009e 3642 1263 IN IP4 127.0.0.1  \r\n",
+            "s=Talk\r\n",
+            "c=IN IP4 127.0.0.1\r\n",
+            "t=0 0\r\n",
+            "a=ice-pwd:d426d2d77a920581717011cb\r\n",
+            "a=ice-ufrag:0bf83d88\r\n",
+            "a=rtcp-xr:rcvr-rtt=all:10000 stat-summary=loss,dup,jitt,TTL voip-metrics\r\n",
+            "m=audio 48616 RTP/AVPF 96 97 98 0 8 3 9 99 10 11 101 100 102 103 104\r\n",
+            "c=IN IP4 168.181.99.178\r\n",
+            "a=rtpmap:96 opus/48000/2\r\n",
+            "a=fmtp:96 useinbandfec=1\r\n",
+            "a=rtpmap:97 speex/16000\r\n",
+            "a=fmtp:97 vbr=on\r\n",
+            "a=rtpmap:98 speex/8000\r\n",
+            "a=fmtp:98 vbr=on\r\n",
+            "a=rtpmap:99 speex/32000\r\n",
+            "a=fmtp:99 vbr=on\r\n",
+            "a=rtpmap:101 telephone-event/48000\r\n",
+            "a=rtpmap:100 telephone-event/16000\r\n",
+            "a=rtpmap:102 telephone-event/8000\r\n",
+            "a=rtpmap:103 telephone-event/32000\r\n",
+            "a=rtpmap:104 telephone-event/44100\r\n",
+            "a=candidate:1 1 UDP 2130706303 192.168.0.115 57881 typ host\r\n",
+            "a=candidate:1 2 UDP 2130706302 192.168.0.115 48948 typ host\r\n",
+            "a=candidate:2 1 UDP 2130706303 100.65.0.2 57881 typ host\r\n",
+            "a=candidate:2 2 UDP 2130706302 100.65.0.2 48948 typ host\r\n",
+            "a=candidate:3 1 UDP 1694498687 168.181.99.178 48616 typ srflx raddr 192.168.0.115 rport 57881\r\n",
+            "a=candidate:3 2 UDP 1694498686 168.181.99.178 48617 typ srflx raddr 192.168.0.115 rport 48948\r\n",
+            "a=rtcp-fb:* trr-int 1000\r\n",
+            "a=rtcp-fb:* ccm tmmbr\r\n",
+        };
+
+        let sdp  = Parser::parse(sdp).unwrap();
+
     }
 }

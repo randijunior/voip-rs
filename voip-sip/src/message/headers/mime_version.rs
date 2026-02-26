@@ -18,9 +18,9 @@ impl HeaderParser for MimeVersion {
 
     fn parse(parser: &mut Parser) -> Result<Self> {
         let (major, _, minor) = (
-            parser.next_byte()? - b'0',
+            parser.read()? - b'0',
             parser.must_read(b'.')?,
-            parser.next_byte()? - b'0',
+            parser.read()? - b'0',
         );
 
         Ok(MimeVersion { major, minor })

@@ -11,7 +11,7 @@ use tokio_util::codec::FramedRead;
 
 use super::decode::{FramedMessage, StreamingDecoder};
 use super::{KEEPALIVE_RESPONSE, Packet, SipTransport, Transport, TransportMessage, TransportType};
-use crate::Endpoint;
+use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 
 type TcpFrameRead = FramedRead<ReadHalf<TcpStream>, StreamingDecoder>;

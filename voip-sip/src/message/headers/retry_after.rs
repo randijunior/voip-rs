@@ -26,10 +26,10 @@ impl HeaderParser for RetryAfter {
         let mut comment = None;
 
         parser.skip_ws();
-        if let Some(b'(') = parser.peek_byte() {
-            parser.next_byte()?;
+        if let Some(b'(') = parser.peek() {
+            parser.read()?;
             let b = parser.read_until(b')');
-            parser.next_byte()?;
+            parser.read()?;
             comment = Some(str::from_utf8(b)?);
         }
         let param = parse_header_param!(parser);

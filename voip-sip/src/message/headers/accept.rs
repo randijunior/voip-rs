@@ -61,7 +61,7 @@ impl HeaderParser for Accept {
     fn parse(parser: &mut Parser) -> Result<Accept> {
         let mtypes = comma_separated_header_value!(parser => {
             let mtype = parser.parse_token()?;
-            parser.next_byte()?;
+            parser.read()?;
             let subtype = parser.parse_token()?;
             let param = parse_header_param!(parser);
 

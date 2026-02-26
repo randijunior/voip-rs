@@ -6,9 +6,9 @@ use std::sync::Arc;
 use tokio::net::{ToSocketAddrs, UdpSocket};
 
 use super::{Packet, SipTransport, Transport, TransportType};
-use crate::Endpoint;
 use crate::error::Result;
-use crate::transport::TransportMessage;
+use crate::transport::{KEEPALIVE_REQUEST, KEEPALIVE_RESPONSE, TransportMessage};
+use crate::endpoint::Endpoint;
 
 #[derive(Debug)]
 struct UdpInner {
@@ -51,13 +51,24 @@ impl UdpTransport {
         loop {
             // Read data into buf.
             let (len, source) = self.inner.sock.recv_from(&mut buf).await?;
-
             if len == 0 {
                 log::error!("[{}] Got an empty message from the peer.", source);
                 continue;
             }
+
+            let datagram = &buf[..len];
+
+            if datagram == KEEPALIVE_REQUEST {
+                self.inner.sock.send_to(KEEPALIVE_RESPONSE, source).await.ok();
+                continue;
+            }
+
+            if datagram == KEEPALIVE_RESPONSE {
+                continue;
+            }
+
             // Copy buf.
-            let datagram_msg = bytes::Bytes::copy_from_slice(&buf[..len]);
+            let datagram_msg = bytes::Bytes::copy_from_slice(datagram);
             // Create Packet.
             let packet = Packet::new(datagram_msg, source);
 

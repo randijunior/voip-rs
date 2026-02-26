@@ -31,12 +31,12 @@ impl HeaderParser for Warning {
         parser.skip_ws();
         let host = unsafe { parser.read_while_as_str_unchecked(is_host) };
         parser.skip_ws();
-        let Some(b'"') = parser.peek_byte() else {
+        let Some(b'"') = parser.peek() else {
             return parser.parse_error(ErrorKind::Header);
         };
-        parser.next_byte()?;
+        parser.read()?;
         let text = parser.read_until(b'"');
-        parser.next_byte()?;
+        parser.read()?;
         let text = str::from_utf8(text)?;
 
         Ok(Warning {
