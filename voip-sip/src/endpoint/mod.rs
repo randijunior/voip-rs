@@ -7,7 +7,7 @@ mod module;
 pub use module::{ReceivedRequest, ReceivedResponse};
 pub use module::Module;
 
-pub use builder::EndpointBuilder;
+pub use builder::{EndpointBuilder, EndpointTransports};
 
 use std::any::type_name;
 use std::borrow::Cow;
@@ -15,9 +15,9 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use tokio::net::ToSocketAddrs;
 
 use utils::{DnsResolver, ToTake};
+
 
 
 use crate::message::headers::{
@@ -27,15 +27,10 @@ use crate::message::{
     DomainName, Host, MandatoryHeaders, NameAddr, ReasonPhrase, Request, Response, SipMessage,
     StatusCode, StatusLine, Uri,
 };
-use crate::transaction::manager::{TsxModule};
-use crate::transaction::{ServerTransaction};
+use crate::transaction::manager::TsxModule;
 use crate::transport::incoming::{IncomingInfo, IncomingRequest, IncomingResponse};
 use crate::transport::outgoing::{Encode, OutgoingRequest, OutgoingResponse, TargetTransportInfo};
-use crate::transport::tcp::TcpListener;
-use crate::transport::udp::UdpTransport;
-use crate::transport::ws::WebSocketListener;
-use crate::transport::{SipTransport, Transport, TransportModule, TransportMessage};
-use crate::ua::dialog::UaModule;
+use crate::transport::{Transport, TransportModule, TransportMessage};
 use crate::endpoint::module::Modules;
 use crate::{Result, Method};
 
@@ -48,7 +43,7 @@ struct EndpointInner {
     capabilities: Headers,
     /// The resolver for DNS lookups.
     resolver: DnsResolver,
-    /// The list of services registered.
+    /// The list of modules registered.
     modules: Modules,
 }
 
@@ -59,16 +54,10 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
-    /// Returns a EndpointBuilder to create an `Endpoint`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use voip::*;
-    /// let endpoint = endpoint::EndpointBuilder::new()
-    ///     .with_name("My Endpoint")
-    ///     .build();
-    /// ```
+    pub async fn run_forever(self) -> Result<()> {
+        futures_util::future::pending().await
+    }
+
     pub fn builder() -> EndpointBuilder {
         EndpointBuilder::default()
     }
@@ -146,7 +135,7 @@ impl Endpoint {
         // the response (with the exception of the 100 (Trying)
         // response, in which a tag MAY be present).
         if to.tag().is_none() && code.as_u16() > 100 {
-            to.set_tag(mandatory_headers.via.branch.clone());
+            to.set_tag(mandatory_headers.via.branch().map(|b| b.to_owned()));
         }
         headers.push(Header::To(to));
 
@@ -183,10 +172,7 @@ impl Endpoint {
         let target = outgoing.request.req_line.uri.clone();
         // Clone: Via, To, From, Max-Forwards, Call-ID and CSeq from response.
         let headers = MandatoryHeaders {
-            cseq: CSeq {
-                method: Method::Ack,
-                ..response.incoming_info.mandatory_headers.cseq
-            },
+            cseq: CSeq::new(response.incoming_info.mandatory_headers.cseq.cseq(), Method::Ack),
             ..response.incoming_info.mandatory_headers.clone()
         }
         .into_headers();
@@ -270,7 +256,7 @@ impl Endpoint {
             let name_addr = NameAddr::new(request.req_line.uri.clone());
             let route = Header::Route(Route {
                 name_addr,
-                param: None,
+                params: None,
             });
             let index = request
                 .headers
@@ -323,35 +309,6 @@ impl Endpoint {
         })
     }
 
-    pub async fn start_udp_transport<A: ToSocketAddrs>(&self, addr: A) -> Result<()> {
-        let udp = UdpTransport::bind(addr).await?;
-        log::info!("SIP UDP transport started, bound to: {}", udp.local_addr());
-        self.transports()
-            .register_transport(Transport::new(udp.clone()))?;
-        tokio::spawn(udp.receive_datagram(self.clone()));
-        Ok(())
-    }
-
-    pub async fn start_tcp_transport<A: ToSocketAddrs>(&self, addr: A) -> Result<()> {
-        let tcp = TcpListener::bind(addr).await?;
-        log::info!(
-            "SIP TCP listener ready for incoming connections at: {}",
-            tcp.local_addr()
-        );
-        tokio::spawn(tcp.accept_clients(self.clone()));
-        Ok(())
-    }
-
-    pub async fn start_ws_transport<A: ToSocketAddrs>(&self, addr: A) -> Result<()> {
-        let ws = WebSocketListener::bind(addr).await?;
-        log::info!(
-            "SIP WS listener ready for incoming connections at: {}",
-            ws.local_addr()
-        );
-        tokio::spawn(ws.accept_clients(self.clone()));
-        Ok(())
-    }
-
     pub(crate) fn receive_transport_message(&self, message: TransportMessage) {
         tokio::spawn({
             let endpoint = self.clone();
@@ -370,7 +327,7 @@ impl Endpoint {
                 // 4. Server Behavior
                 // the server MUST insert a "received" parameter containing the source
                 // IP address that the request came from.
-                headers.via.received = message.packet.source.ip().into();
+                headers.via.set_received(message.packet.source.ip().into());
                 let info = IncomingInfo {
                     mandatory_headers: headers,
                     transport: message,
@@ -386,7 +343,7 @@ impl Endpoint {
                 // 4. Server Behavior
                 // the server MUST insert a "received" parameter containing the source
                 // IP address that the request came from.
-                headers.via.received = message.packet.source.ip().into();
+                headers.via.set_received(message.packet.source.ip().into());
                 let info = IncomingInfo {
                     mandatory_headers: headers,
                     transport: message,
@@ -467,7 +424,7 @@ impl Endpoint {
             log::debug!(
                 "Request ({}, cseq={}) from /{} was unhandled",
                 msg.request.method(),
-                msg.incoming_info.mandatory_headers.cseq.cseq,
+                msg.incoming_info.mandatory_headers.cseq.cseq(),
                 msg.incoming_info.transport.packet.source
             );
         }
@@ -487,7 +444,7 @@ impl Endpoint {
         self.module::<TsxModule>()
     }
 
-    pub(crate) fn dialogs(&self) -> &UaModule {
-        self.module::<UaModule>()
+    pub(crate) fn dialogs(&self) -> &crate::dialog::UaModule {
+        self.module::<crate::dialog::UaModule>()
     }
 }

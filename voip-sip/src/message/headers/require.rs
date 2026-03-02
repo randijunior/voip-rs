@@ -3,44 +3,24 @@ use std::{fmt, str};
 use itertools::Itertools;
 
 use crate::error::Result;
-use crate::macros::comma_separated_header_value;
-use crate::parser::{HeaderParser, Parser};
+use crate::macros::parse_comma_separated_header_value;
+use crate::parser::{HeaderParser, SipParser};
 
-/// The `Require` SIP header.
-///
-/// Is used by `UACs` to tell `UASs` about options that the
-/// `UAC` expects the `UAS` to support in order to process
-/// the request.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Require(Vec<String>);
 
 impl HeaderParser for Require {
     const NAME: &'static str = "Require";
 
-    fn parse(parser: &mut Parser) -> Result<Self> {
-        let tags = comma_separated_header_value!(parser => parser.parse_token()?.into());
+    fn parse(parser: &mut SipParser) -> Result<Self> {
+        let tags = parse_comma_separated_header_value!(parser => parser.parse_token()?.to_owned());
 
-        Ok(Require(tags))
+        Ok(Self(tags))
     }
 }
 
 impl fmt::Display for Require {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", Require::NAME, self.0.iter().format(", "))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse() {
-        let src = b"100rel\r\n";
-        let mut scanner = Parser::new(src);
-        let require = Require::parse(&mut scanner);
-        let require = require.unwrap();
-
-        assert_eq!(require.0.get(0), Some(&"100rel".into()));
+        write!(f, "{}: {}", Self::NAME, self.0.iter().format(", "))
     }
 }

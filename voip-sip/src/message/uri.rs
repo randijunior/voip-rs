@@ -7,8 +7,8 @@ use itertools::Itertools;
 
 use super::{Method, Params};
 use crate::error::{Error, Result};
-use crate::parser::Parser;
-use crate::transport::TransportType;
+use crate::parser::SipParser;
+use crate::transport::SipTransportType;
 
 /// A SIP uri.
 ///
@@ -101,7 +101,7 @@ impl SipUri {
     }
 
     /// Returns the `transport` parameter.
-    pub fn transport_param(&self) -> Option<TransportType> {
+    pub fn transport_param(&self) -> Option<SipTransportType> {
         match self {
             SipUri::Uri(uri) => uri.transport_param,
             SipUri::NameAddr(addr) => addr.uri.transport_param,
@@ -169,7 +169,7 @@ impl FromStr for SipUri {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        Parser::new(s.as_bytes()).parse_sip_uri(true)
+        SipParser::new(s.as_bytes()).parse_sip_uri(true)
     }
 }
 
@@ -222,7 +222,7 @@ pub struct Uri {
     /// The method parameter.
     pub method_param: Option<Method>,
     /// The transport parameter.
-    pub transport_param: Option<TransportType>,
+    pub transport_param: Option<SipTransportType>,
     /// The ttl parameter.
     pub ttl_param: Option<u8>,
     /// The lr parameter.
@@ -263,7 +263,7 @@ impl FromStr for Uri {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let mut p = Parser::new(s.as_bytes());
+        let mut p = SipParser::new(s.as_bytes());
 
         p.parse_uri(true)
     }
@@ -365,7 +365,7 @@ impl UriBuilder {
     }
 
     /// Sets the transport parameter of the uri.
-    pub fn with_transport_param(mut self, param: TransportType) -> Self {
+    pub fn with_transport_param(mut self, param: SipTransportType) -> Self {
         self.uri.transport_param = Some(param);
         self
     }
@@ -479,7 +479,7 @@ impl FromStr for NameAddr {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let mut p = Parser::new(s.as_bytes());
+        let mut p = SipParser::new(s.as_bytes());
 
         p.parse_name_addr()
     }
@@ -644,7 +644,7 @@ impl FromStr for HostPort {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let mut p = Parser::new(s.as_bytes());
+        let mut p = SipParser::new(s.as_bytes());
 
         p.parse_host_port()
     }

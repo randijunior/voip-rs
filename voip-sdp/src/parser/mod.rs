@@ -1,7 +1,7 @@
 use utils::{LookupTable, Scanner, is_newline, is_not_newline, is_space, lookup};
 
 use crate::error::{ParseSdpError, Result};
-use crate::sdp::*;
+use crate::msg::*;
 
 type SdpField = u8;
 
@@ -27,12 +27,12 @@ const ALPHANUMERIC: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
 const TOKEN_TAB: LookupTable = lookup!(ALPHANUMERIC, TOKEN);
 
 /// A SDP message parser.
-pub struct Parser<'buf> {
+pub struct SdpParser<'buf> {
     scanner: Scanner<'buf>,
 }
 
-impl<'buf> Parser<'buf> {
-    /// Construct a new `Parser`.
+impl<'buf> SdpParser<'buf> {
+    /// Construct a new `SdpParser`.
     #[inline]
     pub fn new(buf: &'buf (impl AsRef<[u8]> + ?Sized)) -> Self {
         Self {
@@ -384,7 +384,7 @@ mod tests {
             "a=rtpmap:99 h263-1998/90000\r\n"
         };
 
-        Parser::parse(example_sdp).unwrap();
+        SdpParser::parse(example_sdp).unwrap();
     }
 
     #[test]
@@ -423,7 +423,7 @@ mod tests {
             "a=rtcp-fb:* ccm tmmbr\r\n",
         };
 
-        let sdp  = Parser::parse(sdp).unwrap();
+        let sdp  = SdpParser::parse(sdp).unwrap();
 
     }
 }

@@ -1,5 +1,9 @@
 use tokio::sync::mpsc;
 
+pub mod ua;
+
+pub use ua::UaModule;
+
 use crate::error::{DialogError, Result};
 use crate::message::headers::{CallId, Contact, From, Header, Headers, To};
 use crate::message::{Method, Params, ReasonPhrase, Scheme, StatusCode, Uri};
@@ -53,7 +57,7 @@ impl Dialog {
         let to = mandatory_headers.to.clone();
         let from = mandatory_headers.from.clone();
 
-        let remote_cseq = mandatory_headers.cseq.cseq;
+        let remote_cseq = mandatory_headers.cseq.cseq();
         let local_cseq = None;
 
         let route_set = RouteSet::from_headers(&request.request.headers);
@@ -62,7 +66,7 @@ impl Dialog {
 
         let dialog_id = DialogId {
             call_id: mandatory_headers.call_id.clone(),
-            remote_tag: from.tag().clone(),
+            remote_tag: from.tag().map(|t| t.to_owned()),
             local_tag: crate::generate_tag_n(8),
         };
 
@@ -102,7 +106,7 @@ impl Dialog {
         match self.receiver.recv().await {
             Some(DialogMessage::Request(request)) => {
                 // Check CSeq.
-                let request_cseq = request.incoming_info.mandatory_headers.cseq.cseq;
+                let request_cseq = request.incoming_info.mandatory_headers.cseq.cseq();
 
                 if request_cseq <= self.remote_cseq
                     && !matches!(request.req_line.method, Method::Ack | Method::Cancel)
@@ -149,11 +153,11 @@ impl DialogId {
         let call_id = headers.call_id.clone();
 
         let local_tag = match headers.to.tag() {
-            Some(tag) => tag.clone(),
+            Some(tag) => tag.to_owned(),
             None => return None,
         };
 
-        let remote_tag = headers.from.tag().clone();
+        let remote_tag = headers.from.tag().map(|t| t.to_owned());
 
         Some(Self {
             call_id,
@@ -175,8 +179,8 @@ impl RouteSet {
             .filter_map(|header| {
                 if let Header::RecordRoute(route) = header {
                     Some(RouteSet {
-                        uri: route.addr.uri.clone(),
-                        params: route.params.clone(),
+                        uri: route.name_addr().uri.clone(),
+                        params: route.params().cloned(),
                     })
                 } else {
                     None

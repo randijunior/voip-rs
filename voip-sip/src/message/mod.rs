@@ -321,7 +321,7 @@ impl Response {
     pub fn with_body(status_line: StatusLine, body: &[u8]) -> Self {
         Self {
             status_line,
-            headers: Default::default(),
+            headers:Headers::default(),
             body: Some(body.into()),
         }
     }

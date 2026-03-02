@@ -4,17 +4,15 @@ use std::str::FromStr;
 
 use bytes::Bytes;
 
-use crate::transaction::TsxModule;
-use crate::ua::dialog::UaModule;
 use crate::endpoint::{Endpoint, EndpointBuilder};
 use crate::message::headers::{CSeq, CallId, From, Header, Headers, MaxForwards, To, Via};
 use crate::message::{MandatoryHeaders, Method, Request, Uri};
 use crate::transport::incoming::{IncomingInfo, IncomingRequest};
 use crate::transport::{Packet, Transport, TransportMessage};
 
-pub fn create_test_endpoint() -> Endpoint {
+pub async fn create_test_endpoint() -> Endpoint {
     EndpointBuilder::new()
-        .build()
+        .build().await.unwrap()
 }
 
 fn create_test_headers(method: Method) -> Headers {
@@ -78,7 +76,7 @@ pub mod parser {
         (name: $name:ident, input: $input:literal, expected: $expected:expr) => {
             #[test]
             fn $name() -> Result<()> {
-                let uri = $crate::parser::Parser::new($input).parse_sip_uri(true)?;
+                let uri = $crate::parser::SipParser::new($input).parse_sip_uri(true)?;
 
                 assert_eq!($expected.scheme, uri.scheme());
                 assert_eq!($expected.host_port.host, uri.host_port().host);
@@ -274,10 +272,10 @@ pub mod transaction {
     }
 
     impl SendRequestContext {
-        pub fn setup(method: Method) -> Self {
+        pub async fn setup(method: Method) -> Self {
             let transport = Transport::new(MockTransport::new_udp());
 
-            let endpoint = create_test_endpoint();
+            let endpoint = create_test_endpoint().await;
             let incoming = create_test_request(method, transport.clone());
 
             let destination = incoming.incoming_info.transport.packet.source;
@@ -313,7 +311,7 @@ pub mod transaction {
             let transport_impl = Transport::new(transport.clone());
             let timer = TestTimer::new();
 
-            let endpoint = create_test_endpoint();
+            let endpoint = create_test_endpoint().await;
             let request = create_test_request(method, transport_impl.clone());
 
             let destination = request.incoming_info.transport.packet.source;
@@ -372,18 +370,18 @@ pub mod transaction {
     }
 
     impl ServerTestContext {
-        pub fn setup(method: Method) -> Self {
-            Self::new(method, MockTransport::new_udp())
+        pub async fn setup(method: Method) -> Self {
+            Self::new(method, MockTransport::new_udp()).await
         }
 
-        pub fn setup_reliable(method: Method) -> Self {
-            Self::new(method, MockTransport::new_tcp())
+        pub async fn setup_reliable(method: Method) -> Self {
+            Self::new(method, MockTransport::new_tcp()).await
         }
 
-        fn new(method: Method, transport: MockTransport) -> Self {
+        async fn new(method: Method, transport: MockTransport) -> Self {
             let transport_impl = Transport::new(transport.clone());
 
-            let endpoint = create_test_endpoint();
+            let endpoint = create_test_endpoint().await;
             let request = create_test_request(method, transport_impl);
 
             let mut server = ServerTransaction::new(request.clone(), endpoint.clone());
@@ -415,20 +413,20 @@ pub mod transport {
     use std::sync::{Arc, Mutex};
 
     use crate::message::{Request, SipMessage};
-    use crate::parser::Parser;
-    use crate::transport::{SipTransport, TransportType};
+    use crate::parser::SipParser;
+    use crate::transport::{SipTransport, SipTransportType};
 
     /// A mock transport, for testing purposes
     #[derive(Clone)]
     pub struct MockTransport {
         sent: Arc<Mutex<Vec<(Vec<u8>, SocketAddr)>>>,
         addr: SocketAddr,
-        tp_type: TransportType,
+        tp_type: SipTransportType,
         fail_at: Option<usize>,
     }
 
     impl MockTransport {
-        pub fn with_transport_type(tp_type: TransportType) -> Self {
+        pub fn with_transport_type(tp_type: SipTransportType) -> Self {
             let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
             let port = tp_type.default_port();
             let mock = Self {
@@ -442,15 +440,15 @@ pub mod transport {
         }
 
         pub fn new_udp() -> Self {
-            Self::with_transport_type(TransportType::Udp)
+            Self::with_transport_type(SipTransportType::Udp)
         }
 
         pub fn new_tcp() -> Self {
-            Self::with_transport_type(TransportType::Tcp)
+            Self::with_transport_type(SipTransportType::Tcp)
         }
 
         pub fn new_tls() -> Self {
-            Self::with_transport_type(TransportType::Tls)
+            Self::with_transport_type(SipTransportType::Tls)
         }
 
         pub fn sent_count(&self) -> usize {
@@ -473,7 +471,7 @@ pub mod transport {
         }
 
         pub fn get_last_sent_message(&self) -> Option<SipMessage> {
-            self.last_buffer().map(|b| Parser::parse(&b).unwrap())
+            self.last_buffer().map(|b| SipParser::parse(&b).unwrap())
         }
 
         fn push_msg(&self, (buf_vec, address): (Vec<u8>, SocketAddr)) -> usize {
@@ -501,7 +499,7 @@ pub mod transport {
             None
         }
 
-        fn transport_type(&self) -> TransportType {
+        fn transport_type(&self) -> SipTransportType {
             self.tp_type
         }
 

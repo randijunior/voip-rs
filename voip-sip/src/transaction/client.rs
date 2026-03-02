@@ -72,11 +72,11 @@ impl ClientTransaction {
                 }
             }
         };
-        let branch = match via.branch.clone() {
+        let branch = match via.branch().map(|b| b.to_owned()) {
             Some(branch) => branch,
             None => {
                 let branch = crate::generate_branch();
-                via.branch = Some(branch.clone());
+                via.set_branch(branch.clone());
                 branch
             }
         };
@@ -274,7 +274,7 @@ mod tests {
 
     #[tokio::test]
     async fn invite_transitions_to_calling_when_request_is_sent() {
-        let ctx = SendRequestContext::setup(Method::Invite);
+        let ctx = SendRequestContext::setup(Method::Invite).await;
 
         let uac = ClientTransaction::send_request_with_target(
             ctx.request,
@@ -830,7 +830,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_transitions_to_trying_when_request_is_sent() {
-        let ctx = SendRequestContext::setup(Method::Register);
+        let ctx = SendRequestContext::setup(Method::Register).await;
 
         let uac = ClientTransaction::send_request_with_target(
             ctx.request,

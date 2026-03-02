@@ -1,23 +1,106 @@
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 use utils::DnsResolver;
 
-use crate::message::headers::{Accept, Allow, Headers};
+use crate::message::headers::{Accept, Allow, Header, Supported};
 
-use crate::transport::TransportModule;
+use crate::transport::tcp::TcpListener;
+use crate::transport::ws::WebSocketListener;
+use crate::transport::{SipTransport, Transport, TransportModule};
 
-use crate::{Endpoint, MediaType, Method};
-use crate::endpoint::{EndpointInner};
+use crate::Result;
+use crate::endpoint::EndpointInner;
 use crate::endpoint::module::{Module, Modules};
+use crate::transport::udp::UdpTransport;
+use crate::{Endpoint, MediaType, Method};
 
+#[derive(Default)]
+pub struct EndpointTransports {
+    udp_addrs: Vec<SocketAddr>,
+    tcp_addrs: Vec<SocketAddr>,
+    ws_addrs: Vec<SocketAddr>,
+}
 
-/// EndpointBuilder for creating a new SIP `Endpoint`.
+impl EndpointTransports {
+    async fn start_udp(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
+        let udp = UdpTransport::bind(addr).await?;
+        log::info!("SIP UDP transport started, bound to: {}", udp.local_addr());
+        endpoint
+            .transports()
+            .register_transport(Transport::new(udp.clone()))?;
+        tokio::spawn(udp.receive_datagram(endpoint));
+        Ok(())
+    }
+
+    async fn start_tcp(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
+        let tcp = TcpListener::bind(addr).await?;
+        log::info!(
+            "SIP TCP listener ready for incoming connections at: {}",
+            tcp.local_addr()
+        );
+        tokio::spawn(tcp.accept_clients(endpoint));
+        Ok(())
+    }
+
+    async fn start_ws(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
+        let ws = WebSocketListener::bind(addr).await?;
+        log::info!(
+            "SIP WS listener ready for incoming connections at: {}",
+            ws.local_addr()
+        );
+        tokio::spawn(ws.accept_clients(endpoint));
+        Ok(())
+    }
+
+    pub fn add_udp<A: ToSocketAddrs>(&mut self, addr: A) -> crate::Result<()> {
+        let addrs = addr.to_socket_addrs()?;
+        for addr in addrs {
+            self.udp_addrs.push(addr);
+        }
+
+        Ok(())
+    }
+    pub fn add_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> crate::Result<()> {
+        let addrs = addr.to_socket_addrs()?;
+        for addr in addrs {
+            self.tcp_addrs.push(addr);
+        }
+
+        Ok(())
+    }
+    pub fn add_ws<A: ToSocketAddrs>(&mut self, addr: A) -> crate::Result<()> {
+        let addrs = addr.to_socket_addrs()?;
+        for addr in addrs {
+            self.ws_addrs.push(addr);
+        }
+
+        Ok(())
+    }
+
+    pub async fn listen(mut self, endpoint: Endpoint) -> crate::Result<()> {
+        while let Some(addr) = self.udp_addrs.pop() {
+            self.start_udp(addr, endpoint.clone()).await?;
+        }
+        while let Some(addr) = self.tcp_addrs.pop() {
+            self.start_tcp(addr, endpoint.clone()).await?;
+        }
+        while let Some(addr) = self.ws_addrs.pop() {
+            self.start_ws(addr, endpoint.clone()).await?;
+        }
+        Ok(())
+    }
+}
+
+/// Builder for creating a new SIP `Endpoint`.
 pub struct EndpointBuilder {
     name: String,
     resolver: DnsResolver,
     modules: Modules,
     allow: Allow,
-    accept: Accept
+    accept: Accept,
+    supported: Supported,
+    transports: EndpointTransports,
 }
 
 impl EndpointBuilder {
@@ -26,8 +109,10 @@ impl EndpointBuilder {
             name: String::new(),
             resolver: DnsResolver::default(),
             modules: Modules::default(),
-            accept: Accept::new(),
-            allow: Allow::new()
+            accept: Accept::default(),
+            allow: Allow::default(),
+            supported: Supported::default(),
+            transports: EndpointTransports::default(),
         }
     }
 
@@ -38,33 +123,44 @@ impl EndpointBuilder {
     /// ```
     /// # use voip::*;
     /// let endpoint = endpoint::EndpointBuilder::new()
-    ///     .add_name("My Endpoint")
+    ///     .with_name("My Endpoint")
     ///     .build();
     /// ```
-    pub fn add_name<T: AsRef<str>>(&mut self, s: T) -> &mut Self {
+    pub fn with_name<T: AsRef<str>>(mut self, s: T) -> Self {
         self.name = s.as_ref().to_string();
 
         self
     }
 
-    pub fn add_module<M: Module>(&mut self, module: M) -> &mut Self {
+    pub fn with_module<M: Module>(mut self, module: M) -> Self {
         self.modules.add_module(module);
 
         self
     }
 
-    pub fn add_allow(&mut self, sip_method: Method) -> &mut Self {
+    pub fn with_transports(mut self, transports: EndpointTransports) -> Self {
+        self.transports = transports;
+
+        self
+    }
+
+    pub fn with_allow(&mut self, sip_method: Method) -> &mut Self {
         self.allow.push(sip_method);
         self
     }
 
-    pub fn add_accept(&mut self, media_type: MediaType) -> &mut Self {
+    pub fn with_accept(&mut self, media_type: MediaType) -> &mut Self {
         self.accept.push(media_type);
         self
     }
 
-    /// Finalize the EndpointBuilder into a `Endpoint`.
-    pub fn build(mut self) -> Endpoint {
+    pub fn with_supported(&mut self, tag: String) -> &mut Self {
+        self.supported.add_tag(tag);
+        self
+    }
+
+    /// Finalize the Builder into a `Endpoint`.
+    pub async fn build(mut self) -> Result<Endpoint> {
         log::trace!("Creating endpoint...");
 
         let mut modules = std::mem::take(&mut self.modules);
@@ -74,17 +170,25 @@ impl EndpointBuilder {
             log::debug!("Module {} loaded", format_args!("({})", module.name()));
         }
 
+        let capabilities = crate::headers![
+            Header::Allow(self.allow),
+            Header::Supported(self.supported),
+            Header::Accept(self.accept)
+        ];
+
         let endpoint = Endpoint {
             inner: Arc::new(EndpointInner {
                 transport: TransportModule::new(),
                 name: self.name,
-                capabilities: Headers::new(),
+                capabilities,
                 resolver: self.resolver,
                 modules: modules,
             }),
         };
 
-        endpoint
+        self.transports.listen(endpoint.clone()).await?;
+
+        Ok(endpoint)
     }
 }
 

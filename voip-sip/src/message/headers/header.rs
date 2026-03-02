@@ -6,9 +6,7 @@ use crate::message::headers::*;
 
 /// A SIP Header.
 ///
-/// This enum contain the SIP headers, as defined in
-/// `RFC3261`, see their respective documentation for more
-/// details.
+/// This enum contain the SIP headers, as defined in `RFC3261`.
 #[derive(Debug, PartialEq, EnumAsInner, Clone)]
 pub enum Header {
     /// `Accept` Header
@@ -101,35 +99,6 @@ pub enum Header {
     WWWAuthenticate(WWWAuthenticate),
     /// Other Generic Header
     RawHeader(RawHeader),
-}
-
-/// Raw SIP header.
-#[derive(Clone, Debug, PartialEq)]
-pub struct RawHeader {
-    /// Header name.
-    pub name: String,
-    /// Header value.
-    pub data: String,
-}
-
-impl RawHeader {
-    /// Constructs a raw Header header using the specified name and value.
-    pub fn new<N, V>(name: N, data: V) -> Self
-    where
-        N: Into<String>,
-        V: Into<String>,
-    {
-        Self {
-            name: name.into(),
-            data: data.into(),
-        }
-    }
-}
-
-impl fmt::Display for RawHeader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.data)
-    }
 }
 
 macro_rules! impl_header_display {

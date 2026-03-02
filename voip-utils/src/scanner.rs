@@ -122,10 +122,9 @@ impl<'buf> Scanner<'buf> {
         self.remaining().get(..n)
     }
 
-    fn read_number_str(&mut self) -> &'buf str {
-        let bytes = self.read_while(|b| b.is_ascii_digit() || b == b'.');
-        // SAFETY: `bytes` contains only ASCII digits (0–9) and optionally '.',
-        // all of which are valid single-byte UTF-8 characters.
+    fn read_number_str(&mut self, decimal_point: bool) -> &'buf str {
+        let bytes = self.read_while(|b| b.is_ascii_digit() || (decimal_point && b == b'.'));
+        // SAFETY: `bytes` contains only ASCII digits (0–9) and optionally '.'
         unsafe { std::str::from_utf8_unchecked(bytes) }
     }
 
@@ -134,7 +133,7 @@ impl<'buf> Scanner<'buf> {
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
     pub fn read_u32(&mut self) -> Result<u32> {
-        self.read_number_str()
+        self.read_number_str(false)
             .parse()
             .or_else(|_| Err(ScannerError::InvalidNumber))
     }
@@ -144,7 +143,7 @@ impl<'buf> Scanner<'buf> {
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
     pub fn read_u16(&mut self) -> Result<u16> {
-        self.read_number_str()
+        self.read_number_str(false)
             .parse()
             .or_else(|_| Err(ScannerError::InvalidNumber))
     }
@@ -154,7 +153,7 @@ impl<'buf> Scanner<'buf> {
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
     pub fn read_u64(&mut self) -> Result<u64> {
-        self.read_number_str()
+        self.read_number_str(false)
             .parse()
             .or_else(|_| Err(ScannerError::InvalidNumber))
     }
@@ -164,7 +163,7 @@ impl<'buf> Scanner<'buf> {
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
     pub fn read_i64(&mut self) -> Result<i64> {
-        self.read_number_str()
+        self.read_number_str(false)
             .parse()
             .or_else(|_| Err(ScannerError::InvalidNumber))
     }
@@ -174,7 +173,7 @@ impl<'buf> Scanner<'buf> {
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
     pub fn read_f32(&mut self) -> Result<f32> {
-        self.read_number_str()
+        self.read_number_str(true)
             .parse()
             .or_else(|_| Err(ScannerError::InvalidNumber))
     }

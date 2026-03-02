@@ -94,12 +94,12 @@ impl TransactionKey {
     }
 
     fn from_incoming_info(info: &IncomingInfo, role: Role) -> Self {
-        match info.mandatory_headers.via.branch {
-            Some(ref branch) if branch.starts_with(RFC3261_BRANCH_ID) => {
+        match info.mandatory_headers.via.branch() {
+            Some(branch) if branch.starts_with(RFC3261_BRANCH_ID) => {
                 let branch = branch.clone();
-                let method = info.mandatory_headers.cseq.method;
+                let method = info.mandatory_headers.cseq.method();
 
-                Self::new_key_3261(role, method, branch)
+                Self::new_key_3261(role, method, branch.to_owned())
             }
             _ => {
                 todo!("create rfc 2543")

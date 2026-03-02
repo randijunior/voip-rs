@@ -9,7 +9,7 @@ pub mod message;
 pub mod parser;
 pub mod transaction;
 pub mod transport;
-pub mod ua;
+pub mod dialog;
 
 pub(crate) mod error;
 
@@ -21,7 +21,7 @@ pub use utils::ToTake;
 use error::Error;
 pub use error::Result;
 pub use message::Method;
-use parser::Parser;
+use parser::SipParser;
 
 #[cfg(test)]
 #[macro_use]
@@ -30,7 +30,7 @@ extern crate assert_matches;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Debug};
 use std::net::SocketAddr;
 use std::str::{
     FromStr, {self},
@@ -161,17 +161,17 @@ impl fmt::Display for MediaType {
 
 impl MediaType {
     /// Constructs a `MediaType` from a type and a subtype.
-    pub fn new(mtype: &str, subtype: &str) -> Self {
+    pub fn new(mtype: String, subtype: String) -> Self {
         Self {
             mimetype: MimeType {
-                mtype: mtype.into(),
-                subtype: subtype.into(),
+                mtype,
+                subtype,
             },
             param: None,
         }
     }
 
-    pub fn parse(parser: &mut Parser) -> Result<Self> {
+    pub fn parse(parser: &mut SipParser) -> Result<Self> {
         let mtype = parser.parse_token()?;
         parser.read();
         let subtype = parser.parse_token()?;
@@ -181,7 +181,7 @@ impl MediaType {
     }
 
     pub fn from_static(s: &'static str) -> Result<Self> {
-        Self::parse(&mut Parser::new(s.as_bytes()))
+        Self::parse(&mut SipParser::new(s.as_bytes()))
     }
 
     /// Constructs a `MediaType` with an optional

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tokio::net::{ToSocketAddrs, UdpSocket};
 
-use super::{Packet, SipTransport, Transport, TransportType};
+use super::{Packet, SipTransport, Transport, SipTransportType};
 use crate::error::Result;
 use crate::transport::{KEEPALIVE_REQUEST, KEEPALIVE_RESPONSE, TransportMessage};
 use crate::endpoint::Endpoint;
@@ -92,8 +92,8 @@ impl SipTransport for UdpTransport {
         None
     }
 
-    fn transport_type(&self) -> TransportType {
-        TransportType::Udp
+    fn transport_type(&self) -> SipTransportType {
+        SipTransportType::Udp
     }
 
     fn local_addr(&self) -> SocketAddr {

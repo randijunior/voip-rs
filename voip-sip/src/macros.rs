@@ -2,14 +2,14 @@ macro_rules! parse_header_param {
     ($scanner:ident) => (
         $crate::macros::parse_param!(
             $scanner,
-            $crate::parser::Parser::parse_ref_param,
+            $crate::parser::SipParser::parse_ref_param,
         )
     );
 
     ($scanner:ident, $($name:ident = $var:expr),*) => (
         $crate::macros::parse_param!(
             $scanner,
-            $crate::parser::Parser::parse_ref_param,
+            $crate::parser::SipParser::parse_ref_param,
             $($name = $var),*
         )
     );
@@ -52,24 +52,28 @@ macro_rules! parse_param {
         }};
     }
 
-macro_rules! comma_separated_header_value {
-    ($scanner:ident => $body:expr) => {{
-        let mut hdr_itens = Vec::with_capacity(1);
-        $crate::macros::comma_separated!($scanner => {
-            hdr_itens.push($body);
-        });
-        hdr_itens
+macro_rules! parse_comma_separated_header_value {
+    ($parser:ident => $body:expr) => {{
+        if $parser.is_next_newline() {
+            Vec::new()
+        } else {
+            let mut hdr_itens = Vec::with_capacity(1);
+            $crate::macros::comma_separated!($parser => {
+                hdr_itens.push($body);
+            });
+            hdr_itens
+        }
     }};
 }
 
 macro_rules! comma_separated {
-    ($scanner:ident => $body:expr) => {{
-        $scanner.skip_ws();
+    ($parser:ident => $body:expr) => {{
+        $parser.skip_ws();
         $body
 
-        while let Some(b',') = $scanner.peek() {
-            $scanner.read()?;
-            $scanner.skip_ws();
+        while let Some(b',') = $parser.peek() {
+            $parser.read()?;
+            $parser.skip_ws();
             $body
         }
     }};
@@ -135,7 +139,6 @@ macro_rules! find_map_mut_header {
 }
 
 pub(crate) use {
-    comma_separated, comma_separated_header_value,parse_header_param, parse_param,
-    try_parse_hdr,
+    comma_separated, parse_comma_separated_header_value, parse_header_param, parse_param, try_parse_hdr,
 };
 pub use {filter_map_header, find_map_header, find_map_mut_header, headers};

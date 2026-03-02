@@ -5,22 +5,10 @@ This project is in its early stages of development.
 # Usage
 
 ```rust
-use voip::sip::endpoint::{Module as EndpointModule, Endpoint, ReceivedRequest};
+use std::error::Error;
+
+use voip::sip::endpoint::{Endpoint, Module as EndpointModule, ReceivedRequest, EndpointTransports};
 use voip::sip::message::{Method, StatusCode};
-
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let mut builder = Endpoint::builder();
-    builder.add_module(SipStateless);
-
-    let endpoint = builder.build();
-    endpoint.start_udp_transport("0.0.0.0:8089").await?;
-
-    loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    }
-}
 
 pub struct SipStateless;
 
@@ -34,8 +22,27 @@ impl EndpointModule for SipStateless {
         let request = received.take();
 
         if request.req_line.method != Method::Ack {
-            endpoint.respond(&request, StatusCode::NotImplemented, None).await.unwrap();
+            endpoint
+                .respond(&request, StatusCode::NotImplemented, None)
+                .await
+                .unwrap();
         }
     }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {    
+    let mut transports = EndpointTransports::default();
+
+    transports.add_udp("0.0.0.0:8089")?;
+
+    let endpoint = Endpoint::builder()
+        .with_transports(transports)
+        .with_module(SipStateless)
+        .build().await?;
+
+    endpoint.run_forever().await?;
+
+    Ok(())
 }
 ```

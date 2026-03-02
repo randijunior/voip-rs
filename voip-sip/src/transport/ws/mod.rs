@@ -30,7 +30,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
 use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
-use crate::transport::{Packet, SipTransport, Transport, TransportMessage, TransportType};
+use crate::transport::{Packet, SipTransport, Transport, TransportMessage, SipTransportType};
 
 const SIP: HeaderValue = HeaderValue::from_static("sip");
 
@@ -125,8 +125,8 @@ impl SipTransport for WebSocketTransport {
         Some(self.peer_addr)
     }
 
-    fn transport_type(&self) -> TransportType {
-        TransportType::Ws
+    fn transport_type(&self) -> SipTransportType {
+        SipTransportType::Ws
     }
 
     fn local_addr(&self) -> SocketAddr {

@@ -2,9 +2,10 @@ use std::error::Error;
 
 use tracing::Level;
 use tracing_subscriber::fmt::time::ChronoLocal;
-use voip::sip::endpoint::{Module as EndpointModule, Endpoint, ReceivedRequest};
+use voip::sip::endpoint::{
+    Endpoint, EndpointTransports, Module as EndpointModule, ReceivedRequest,
+};
 use voip::sip::message::{Method, StatusCode};
-
 
 pub struct SipStateless;
 
@@ -18,7 +19,10 @@ impl EndpointModule for SipStateless {
         let request = received.take();
 
         if request.req_line.method != Method::Ack {
-            endpoint.respond(&request, StatusCode::NotImplemented, None).await.unwrap();
+            endpoint
+                .respond(&request, StatusCode::NotImplemented, None)
+                .await
+                .unwrap();
         }
     }
 }
@@ -31,13 +35,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_timer(ChronoLocal::new(String::from("%H:%M:%S%.3f")))
         .init();
 
-    let mut builder = Endpoint::builder();
-    builder.add_module(SipStateless);
+    let mut transports = EndpointTransports::default();
 
-    let endpoint = builder.build();
-    endpoint.start_udp_transport("0.0.0.0:8089").await?;
+    transports.add_udp("0.0.0.0:8089")?;
 
-    loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    }
+    let endpoint = Endpoint::builder()
+        .with_transports(transports)
+        .with_module(SipStateless)
+        .build()
+        .await?;
+
+    endpoint.run_forever().await?;
+
+    Ok(())
 }

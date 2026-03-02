@@ -33,7 +33,7 @@ use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 use crate::message::SipMessage;
 use crate::message::uri::{DomainName, Host, Scheme, Uri};
-use crate::parser::Parser;
+use crate::parser::SipParser;
 use crate::transport::tcp::TcpTransport;
 use crate::transport::ws::WebSocketTransport;
 
@@ -143,7 +143,7 @@ impl TransportModule {
                 Host::IpAddr(ip_addr) => {
                     // 2. If no transport parameter and target is an IP address then sip should use
                     // udp and sips tcp.
-                    let transport = TransportType::from_scheme(uri.scheme);
+                    let transport = SipTransportType::from_scheme(uri.scheme);
                     let port = port.unwrap_or(transport.default_port());
                     let addr = SocketAddr::new(*ip_addr, port);
                     let transport = self
@@ -156,7 +156,7 @@ impl TransportModule {
                         // 3. If no transport parameter and target is a host name with an explicit port
                         // then sip should use udp and sips tcp and host should be resolved using an A
                         // or AAAA record DNS lookup (section 4.2)
-                        let transport = TransportType::from_scheme(uri.scheme);
+                        let transport = SipTransportType::from_scheme(uri.scheme);
                         let ip = endpoint.dns_lookup(domain).await?;
                         let addr = SocketAddr::new(ip, port);
                         let transport = self
@@ -175,15 +175,15 @@ impl TransportModule {
                             let records = [
                                 (
                                     Name::from_utf8(format!("_sips._tcp.{name}")).unwrap(),
-                                    TransportType::Tls,
+                                    SipTransportType::Tls,
                                 ),
                                 (
                                     Name::from_utf8(format!("_sip._udp.{name}")).unwrap(),
-                                    TransportType::Udp,
+                                    SipTransportType::Udp,
                                 ),
                                 (
                                     Name::from_utf8(format!("_sip._tcp.{name}")).unwrap(),
-                                    TransportType::Tcp,
+                                    SipTransportType::Tcp,
                                 ),
                             ];
 
@@ -226,7 +226,7 @@ impl TransportModule {
                             }
 
                             let ip = endpoint.dns_lookup(domain).await?;
-                            let transport = TransportType::from_scheme(uri.scheme);
+                            let transport = SipTransportType::from_scheme(uri.scheme);
                             let port = transport.default_port();
                             let addr = SocketAddr::new(ip, port);
                             let transport = self
@@ -261,7 +261,7 @@ impl TransportModule {
         }
         for record in naptr_records {
             // If NAPTR record(s) are found select the desired transport and lookup the SRV record.
-            let Some(transport) = TransportType::from_naptr_service(record.services()) else {
+            let Some(transport) = SipTransportType::from_naptr_service(record.services()) else {
                 continue;
             };
             match record.flags() {
@@ -317,7 +317,7 @@ impl TransportModule {
 
     fn get_by_transport_type_and_ip_family(
         &self,
-        protocol: TransportType,
+        protocol: SipTransportType,
         ip: IpAddr,
     ) -> Result<Option<Transport>> {
         let map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
@@ -334,7 +334,7 @@ impl TransportModule {
 
     async fn get_or_create_transport(
         &self,
-        protocol: TransportType,
+        protocol: SipTransportType,
         addr: SocketAddr,
         endpoint: &Endpoint,
     ) -> Result<Transport> {
@@ -343,9 +343,9 @@ impl TransportModule {
             return Ok(transport.clone());
         }
         let transport = match protocol {
-            TransportType::Tcp => TcpTransport::connect(addr, endpoint).await?,
-            TransportType::Ws | TransportType::Wss => {
-                let scheme = if protocol == TransportType::Ws {
+            SipTransportType::Tcp => TcpTransport::connect(addr, endpoint).await?,
+            SipTransportType::Ws | SipTransportType::Wss => {
+                let scheme = if protocol == SipTransportType::Ws {
                     "ws"
                 } else {
                     "wss"
@@ -353,8 +353,8 @@ impl TransportModule {
                 let url = format!("{scheme}://{addr}");
                 WebSocketTransport::connect(&url, 1.0, endpoint).await?
             }
-            TransportType::Udp => self
-                .get_by_transport_type_and_ip_family(TransportType::Udp, addr.ip())?
+            SipTransportType::Udp => self
+                .get_by_transport_type_and_ip_family(SipTransportType::Udp, addr.ip())?
                 .ok_or(Error::UnsupportedTransport)?,
             _ => return Err(Error::UnsupportedTransport),
         };
@@ -374,7 +374,7 @@ impl TransportModule {
 
 /// Represents the type of transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TransportType {
+pub enum SipTransportType {
     /// Udp.
     Udp,
     /// Tcp.
@@ -389,7 +389,7 @@ pub enum TransportType {
     Sctp,
 }
 
-impl TransportType {
+impl SipTransportType {
     /// Returns true if the transport is reliable.
     pub fn is_reliable(self) -> bool {
         matches!(
@@ -429,7 +429,7 @@ impl TransportType {
     }
 }
 
-impl FromStr for TransportType {
+impl FromStr for SipTransportType {
     type Err = ();
 
     fn from_str(s: &str) -> StdResult<Self, Self::Err> {
@@ -445,7 +445,7 @@ impl FromStr for TransportType {
     }
 }
 
-impl TryFrom<&str> for TransportType {
+impl TryFrom<&str> for SipTransportType {
     type Error = ();
 
     fn try_from(s: &str) -> StdResult<Self, Self::Error> {
@@ -453,7 +453,7 @@ impl TryFrom<&str> for TransportType {
     }
 }
 
-impl TryFrom<String> for TransportType {
+impl TryFrom<String> for SipTransportType {
     type Error = ();
 
     fn try_from(s: String) -> StdResult<Self, Self::Error> {
@@ -461,9 +461,9 @@ impl TryFrom<String> for TransportType {
     }
 }
 
-impl fmt::Display for TransportType {
+impl fmt::Display for SipTransportType {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        use self::TransportType::*;
+        use self::SipTransportType::*;
 
         f.write_str(match self {
             Udp => "UDP",
@@ -484,7 +484,7 @@ pub trait SipTransport: Send + Sync + 'static {
     async fn send_msg(&self, buf: &[u8], address: &SocketAddr) -> Result<usize>;
 
     /// Get transport type.
-    fn transport_type(&self) -> TransportType;
+    fn transport_type(&self) -> SipTransportType;
 
     /// Get the local socket address addr to this transport.
     fn local_addr(&self) -> SocketAddr;
@@ -516,12 +516,12 @@ pub struct TransportKey {
     /// The destination address of the transport.
     pub address: SocketAddr,
     /// The transport type (e.g., UDP, TCP, TLS).
-    pub tp_type: TransportType,
+    pub tp_type: SipTransportType,
 }
 
 impl TransportKey {
     /// Creates a new transport key.
-    pub fn new(address: SocketAddr, tp_type: TransportType) -> Self {
+    pub fn new(address: SocketAddr, tp_type: SipTransportType) -> Self {
         TransportKey { address, tp_type }
     }
 }
@@ -573,7 +573,7 @@ impl TransportMessage {
     /// Parse the packet into an sip message.
     pub fn parse(&self) -> Result<SipMessage> {
         let Self { transport, packet } = self;
-        let sip_message = match Parser::parse(&packet.data) {
+        let sip_message = match SipParser::parse(&packet.data) {
             Ok(parsed) => parsed,
             Err(err) => {
                 log::warn!(
@@ -609,39 +609,39 @@ mod tests {
     #[test]
     fn test_sip_transport() {
         let transport = MockTransport::new_udp();
-        assert_eq!(transport.transport_type(), TransportType::Udp);
+        assert_eq!(transport.transport_type(), SipTransportType::Udp);
         assert!(!transport.is_reliable());
         assert!(!transport.is_secure());
 
         let transport = MockTransport::new_tcp();
-        assert_eq!(transport.transport_type(), TransportType::Tcp);
+        assert_eq!(transport.transport_type(), SipTransportType::Tcp);
         assert!(transport.is_reliable());
         assert!(!transport.is_secure());
 
         let transport = MockTransport::new_tls();
-        assert_eq!(transport.transport_type(), TransportType::Tls);
+        assert_eq!(transport.transport_type(), SipTransportType::Tls);
         assert!(transport.is_reliable());
         assert!(transport.is_secure());
     }
 
     #[test]
     fn test_transport_type() {
-        let udp = TransportType::Udp;
+        let udp = SipTransportType::Udp;
         assert_eq!(udp.default_port(), 5060);
         assert!(!udp.is_reliable());
         assert!(!udp.is_secure());
 
-        let tcp = TransportType::Tcp;
+        let tcp = SipTransportType::Tcp;
         assert_eq!(tcp.default_port(), 5060);
         assert!(tcp.is_reliable());
         assert!(!tcp.is_secure());
 
-        let tls = TransportType::Tls;
+        let tls = SipTransportType::Tls;
         assert_eq!(tls.default_port(), 5061);
         assert!(tls.is_reliable());
         assert!(tls.is_secure());
 
-        let ws = TransportType::Ws;
+        let ws = SipTransportType::Ws;
         assert_eq!(ws.default_port(), 80);
         assert!(ws.is_reliable());
         assert!(!ws.is_secure());
@@ -649,25 +649,25 @@ mod tests {
 
     #[test]
     fn test_transport_type_from_string() {
-        let tp_type: TransportType = "UDP".try_into().unwrap();
-        assert_eq!(tp_type, TransportType::Udp);
-        let tp_type: TransportType = "udp".try_into().unwrap();
-        assert_eq!(tp_type, TransportType::Udp);
+        let tp_type: SipTransportType = "UDP".try_into().unwrap();
+        assert_eq!(tp_type, SipTransportType::Udp);
+        let tp_type: SipTransportType = "udp".try_into().unwrap();
+        assert_eq!(tp_type, SipTransportType::Udp);
 
-        let tp_type: TransportType = "TCP".try_into().unwrap();
-        assert_eq!(tp_type, TransportType::Tcp);
-        let tp_type: TransportType = "tcp".try_into().unwrap();
-        assert_eq!(tp_type, TransportType::Tcp);
+        let tp_type: SipTransportType = "TCP".try_into().unwrap();
+        assert_eq!(tp_type, SipTransportType::Tcp);
+        let tp_type: SipTransportType = "tcp".try_into().unwrap();
+        assert_eq!(tp_type, SipTransportType::Tcp);
 
-        let tp_type: TransportType = "TLS".try_into().unwrap();
-        assert_eq!(tp_type, TransportType::Tls);
-        let tp_type: TransportType = "tls".try_into().unwrap();
-        assert_eq!(tp_type, TransportType::Tls);
+        let tp_type: SipTransportType = "TLS".try_into().unwrap();
+        assert_eq!(tp_type, SipTransportType::Tls);
+        let tp_type: SipTransportType = "tls".try_into().unwrap();
+        assert_eq!(tp_type, SipTransportType::Tls);
 
-        let tp_type: TransportType = "WS".try_into().unwrap();
-        assert_eq!(tp_type, TransportType::Ws);
-        let tp_type: TransportType = "ws".try_into().unwrap();
-        assert_eq!(tp_type, TransportType::Ws);
+        let tp_type: SipTransportType = "WS".try_into().unwrap();
+        assert_eq!(tp_type, SipTransportType::Ws);
+        let tp_type: SipTransportType = "ws".try_into().unwrap();
+        assert_eq!(tp_type, SipTransportType::Ws);
     }
 
     #[test]
@@ -681,7 +681,7 @@ mod tests {
         // manager.register_transport(transport).unwrap();
         // assert_eq!(manager.transport_count().unwrap(), 1);
 
-        // let selected = manager.select_transport(addr, TransportType::Udp);
+        // let selected = manager.select_transport(addr, SipTransportType::Udp);
         // let selected = selected.unwrap().unwrap();
         // assert_eq!(selected.transport_type(), tp_type);
         // assert_eq!(selected.local_addr(), addr);

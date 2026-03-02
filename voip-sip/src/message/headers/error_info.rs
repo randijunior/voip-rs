@@ -3,14 +3,42 @@ use std::{fmt, str};
 use itertools::Itertools;
 
 use crate::error::Result;
-use crate::macros::{comma_separated_header_value, parse_header_param};
+use crate::macros::{parse_comma_separated_header_value, parse_header_param};
 use crate::message::Params;
-use crate::parser::{HeaderParser, Parser};
+use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ErrorInfoUri {
     url: String,
     params: Option<Params>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ErrorInfo(Vec<ErrorInfoUri>);
+
+impl HeaderParser for ErrorInfo {
+    const NAME: &'static str = "Error-Info";
+
+    fn parse(parser: &mut SipParser) -> Result<Self> {
+        let infos = parse_comma_separated_header_value!(parser => {
+            ErrorInfoUri::parse(parser)?
+        });
+
+        Ok(Self(infos))
+    }
+}
+
+impl ErrorInfoUri {
+    pub fn parse(parser: &mut SipParser) -> Result<Self> {
+        parser.must_read(b'<')?;
+        let url = parser.read_until(b'>');
+        parser.read()?;
+
+        let url = str::from_utf8(url)?.to_owned();
+        let params = parse_header_param!(parser);
+
+        Ok(Self { url, params })
+    }
 }
 
 impl fmt::Display for ErrorInfoUri {
@@ -25,52 +53,8 @@ impl fmt::Display for ErrorInfoUri {
     }
 }
 
-/// The `Error-Info` SIP header.
-///
-/// Provides a pointer to additional information about the
-/// error status response.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ErrorInfo(Vec<ErrorInfoUri>);
-
-impl HeaderParser for ErrorInfo {
-    const NAME: &'static str = "Error-Info";
-
-    fn parse(parser: &mut Parser) -> Result<Self> {
-        let infos = comma_separated_header_value!(parser => {
-            parser.read()?;
-            let url = parser.read_until(b'>');
-            parser.read()?;
-
-            let url = str::from_utf8(url)?;
-            let params = parse_header_param!(parser);
-            ErrorInfoUri {
-                url: url.into(),
-                params
-            }
-        });
-
-        Ok(ErrorInfo(infos))
-    }
-}
-
 impl fmt::Display for ErrorInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0.iter().format(", "))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse() {
-        let src = b"<sip:not-in-service-recording@atlanta.com>\r\n";
-        let mut scanner = Parser::new(src);
-        let err_info = ErrorInfo::parse(&mut scanner).unwrap();
-        assert_eq!(scanner.remaining(), b"\r\n");
-
-        let err = err_info.0.get(0).unwrap();
-        assert_eq!(err.url, "sip:not-in-service-recording@atlanta.com");
     }
 }

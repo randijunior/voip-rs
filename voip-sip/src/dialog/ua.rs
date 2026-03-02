@@ -1,27 +1,15 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
-
-pub mod dialog;
-
-pub use dialog::{Dialog, DialogId, DialogMessage};
 use tokio::sync::mpsc;
-use utils::ToTake;
 
-use crate::error::DialogError;
-use crate::message::Scheme;
-use crate::message::headers::Contact;
-use crate::transaction::Role;
-use crate::transport::incoming::{IncomingRequest, IncomingResponse};
-use crate::transport::outgoing::OutgoingResponse;
-use crate::ua::dialog::dialog::DialogState;
+
+use crate::dialog::{DialogId, DialogMessage};
+use crate::transport::incoming::{IncomingRequest};
+
 use crate::endpoint::{self, ReceivedResponse};
 use crate::endpoint::ReceivedRequest;
-use crate::{Endpoint, Result, Method};
+use crate::{Endpoint, Method};
 
-/// Returns `true` if this method can establish a dialog
-const fn can_establish_a_dialog(method: &Method) -> bool {
-    matches!(method, Method::Invite)
-}
 
 #[derive(Default)]
 pub struct UaModule {
@@ -30,9 +18,7 @@ pub struct UaModule {
 
 impl UaModule {
     pub fn new() -> Self {
-        Self {
-            dialogs: Default::default(),
-        }
+        Self::default()
     }
 
     // pub async fn handle_response(&self, response: IncomingResponse) -> Option<IncomingResponse> {

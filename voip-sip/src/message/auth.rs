@@ -189,31 +189,31 @@ impl fmt::Display for Credential {
                     write!(f, "username={username}")?;
                 }
                 if let Some(realm) = realm {
-                    write!(f, "realm={realm}, ")?;
+                    write!(f, ", realm={realm}")?;
                 }
                 if let Some(nonce) = nonce {
-                    write!(f, "nonce={nonce}, ")?;
+                    write!(f, ", nonce={nonce}")?;
                 }
                 if let Some(uri) = uri {
-                    write!(f, "uri={uri}, ")?;
+                    write!(f, ", uri={uri}")?;
                 }
                 if let Some(response) = response {
-                    write!(f, "response={response}, ")?;
+                    write!(f, ", response={response}")?;
                 }
                 if let Some(algorithm) = algorithm {
-                    write!(f, "algorithm={algorithm}, ")?;
+                    write!(f, ", algorithm={algorithm}")?;
                 }
                 if let Some(cnonce) = cnonce {
-                    write!(f, "cnonce={cnonce}, ")?;
+                    write!(f, ", cnonce={cnonce}")?;
                 }
                 if let Some(qop) = qop {
-                    write!(f, "qop={qop}, ")?;
+                    write!(f, ", qop={qop}")?;
                 }
                 if let Some(nc) = nc {
-                    write!(f, "nc={nc}, ")?;
+                    write!(f, ", nc={nc}")?;
                 }
                 if let Some(opaque) = opaque {
-                    write!(f, "opaque={opaque}, ")?;
+                    write!(f, ", opaque={opaque}")?;
                 }
 
                 Ok(())

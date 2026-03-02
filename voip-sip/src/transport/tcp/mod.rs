@@ -10,7 +10,7 @@ use tokio_stream::StreamExt;
 use tokio_util::codec::FramedRead;
 
 use super::decode::{FramedMessage, StreamingDecoder};
-use super::{KEEPALIVE_RESPONSE, Packet, SipTransport, Transport, TransportMessage, TransportType};
+use super::{KEEPALIVE_RESPONSE, Packet, SipTransport, Transport, TransportMessage, SipTransportType};
 use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 
@@ -86,8 +86,8 @@ impl SipTransport for TcpTransport {
         Some(self.remote_addr)
     }
 
-    fn transport_type(&self) -> TransportType {
-        TransportType::Tcp
+    fn transport_type(&self) -> SipTransportType {
+        SipTransportType::Tcp
     }
 
     fn local_addr(&self) -> SocketAddr {

@@ -1,7 +1,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use crate::parser::Parser;
+use crate::parser::SipParser;
 use crate::{Error, Result};
 
 pub(crate) type ParameterRef<'a> = (&'a str, Option<&'a str>);
@@ -131,7 +131,7 @@ impl FromStr for Param {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        Ok(Parser::new(s).parse_ref_param()?.into())
+        Ok(SipParser::new(s).parse_ref_param()?.into())
     }
 }
 

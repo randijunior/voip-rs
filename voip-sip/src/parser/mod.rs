@@ -1,13 +1,10 @@
-//! SIP Parser
-//!
-//! The module provides [`Parser`] struct for parsing SIP messages, including
-//! requests and responses, as well as various components such as URIs and
-//! headers.
+//! SIP SipParser
 
 use std::str::{self, FromStr};
 
 use utils::{
-    Position, Scanner, ScannerError, LookupTable, is_alphabetic, is_digit, is_newline, is_not_newline, is_space, lookup, not_comma_or_newline
+    LookupTable, Position, Scanner, ScannerError, is_alphabetic, is_digit, is_newline,
+    is_not_newline, is_space, lookup, not_comma_or_newline,
 };
 
 use crate::Result;
@@ -15,10 +12,10 @@ use crate::error::{Error, ParseError, ParseErrorKind as Kind};
 use crate::macros::{comma_separated, parse_param, try_parse_hdr};
 use crate::message::headers::*;
 use crate::message::*;
-use crate::transport::TransportType;
+use crate::transport::SipTransportType;
 
 // ---------------------------------------------------------------------
-// Parser constants
+// SipParser constants
 // ---------------------------------------------------------------------
 
 /// The user param used in SIP URIs.
@@ -105,10 +102,9 @@ type ParamRef<'a> = (&'a str, Option<&'a str>);
 /// parsed from a byte slice, as typically received in SIP
 /// messages.
 pub trait HeaderParser: Sized {
-    /// The full name of the SIP header (e.g., `"Contact"`).
+    /// The full name of the SIP header.
     const NAME: &'static str;
-    /// The abbreviated name of the SIP header, if any
-    /// (e.g., `"f"` for `"From"`).
+    /// The abbreviated name of the SIP header, if any.
     ///
     /// Defaults to a panic if the header does not have a
     /// short name.
@@ -122,15 +118,15 @@ pub trait HeaderParser: Sized {
 
     /// Parse the SIP header from the buffer return a parsed
     /// structure.
-    fn parse(parser: &mut Parser) -> Result<Self>;
+    fn parse(parser: &mut SipParser) -> Result<Self>;
 
     /// Parses this header from a raw byte slice.
     ///
     /// This is a convenience method that creates a
-    /// [`Parser`] and delegates to
+    /// [`SipParser`] and delegates to
     /// [`parse`](HeaderParser::parse).
     fn from_bytes(src: &[u8]) -> Result<Self> {
-        Self::parse(&mut Parser::new(src))
+        Self::parse(&mut SipParser::new(src))
     }
 }
 
@@ -138,23 +134,23 @@ pub trait HeaderParser: Sized {
 ///
 /// This struct provides methods for parsing various components of SIP messages,
 /// such as header fields, URIs, and start lines.
-pub struct Parser<'buf> {
+pub struct SipParser<'buf> {
     /// The scanner used to read the input buffer.
     scanner: Scanner<'buf>,
 }
 
-impl<'buf> Parser<'buf> {
-    /// Creates a new `Parser` from the given byte slice.
+impl<'buf> SipParser<'buf> {
+    /// Creates a new `SipParser` from the given byte slice.
     ///
     /// This method is useful if you want to parse only specific parts of a SIP
     /// message, such as a URI.
     ///
-    /// To parse the buffer direct into a [`SipMessage`], use the [`Parser::parse`]
+    /// To parse the buffer direct into a [`SipMessage`], use the [`SipParser::parse`]
     /// method.
     ///
     /// # Examples
     /// ```
-    /// let line = Parser::new(b"SIP/2.0 200 OK\r\n")
+    /// let line = SipParser::new(b"SIP/2.0 200 OK\r\n")
     ///     .parse_status_line()
     ///     .unwrap();
     /// ```
@@ -170,13 +166,13 @@ impl<'buf> Parser<'buf> {
 
     /// Parses the `buf` into a [`SipMessage`].
     ///
-    /// This is equivalent to `Parser::new(buf).parse()`.
+    /// This is equivalent to `SipParser::new(buf).parse()`.
     ///
     /// # Examples
     ///
     /// ```
     /// let buf = b"SIP/2.0 200 OK\r\nContent-Length: 0\r\n\r\n";
-    /// let msg = Parser::parse(buf).unwrap();
+    /// let msg = SipParser::parse(buf).unwrap();
     /// let res = msg.response().unwrap();
     ///
     /// assert_eq!(res.code().as_u16(), 200);
@@ -196,7 +192,7 @@ impl<'buf> Parser<'buf> {
     ///
     /// ```
     /// let buf = b"SIP/2.0 200 OK\r\nContent-Length: 0\r\n\r\n";
-    /// let msg = Parser::new().parse(buf).unwrap();
+    /// let msg = SipParser::new().parse(buf).unwrap();
     /// let res = result.response().unwrap();
     ///
     /// assert_eq!(res.code().as_u16(), 200);
@@ -409,7 +405,7 @@ impl<'buf> Parser<'buf> {
                 }
                 name => {
                     // Found a header that is not defined in RFC 3261.
-                    let data = self.read_until_new_line_as_str()?;
+                    let data = self.read_line()?;
                     let header = RawHeader::new(name, data);
                     headers.push(Header::RawHeader(header));
                 }
@@ -509,7 +505,7 @@ impl<'buf> Parser<'buf> {
         );
 
         let transport_param = transport_param
-            .map(TransportType::from_str)
+            .map(SipTransportType::from_str)
             .transpose()
             .or_else(|_| self.parse_error(Kind::Transport))?;
         let ttl_param = ttl_param.map(|ttl: &str| ttl.parse().unwrap());
@@ -603,7 +599,7 @@ impl<'buf> Parser<'buf> {
     }
 
     fn parse_reason(&mut self) -> Result<ReasonPhrase> {
-        let reason = self.read_until_new_line_as_str()?.to_string().into();
+        let reason = self.read_line()?.to_string().into();
 
         Ok(ReasonPhrase::new(reason))
     }
@@ -700,8 +696,7 @@ impl<'buf> Parser<'buf> {
 
     #[inline]
     fn parse_header_end(&mut self) -> bool {
-        !(self.scanner.read_if_eq(b'\r').is_none()
-            || self.scanner.read_if_eq(b'\n').is_none())
+        !(self.scanner.read_if_eq(b'\r').is_none() || self.scanner.read_if_eq(b'\n').is_none())
     }
 
     #[inline]
@@ -731,7 +726,7 @@ impl<'buf> Parser<'buf> {
     }
 
     /// Read until a new line (`\r` or `\n`) is found.
-    pub(crate) fn read_until_new_line_as_str(&mut self) -> Result<&'buf str> {
+    pub(crate) fn read_line(&mut self) -> Result<&'buf str> {
         let bytes = self.scanner.read_while(is_not_newline);
 
         Ok(str::from_utf8(bytes)?)
@@ -828,7 +823,7 @@ impl<'buf> Parser<'buf> {
     }
 
     #[inline]
-    pub(crate) fn alphabetic(&mut self) -> &'buf [u8] {
+    pub(crate) fn read_alphabetic(&mut self) -> &'buf [u8] {
         self.scanner.read_while(is_alphabetic)
     }
 
@@ -897,7 +892,7 @@ impl<'buf> Parser<'buf> {
     }
 
     #[inline]
-    fn read_host_str(&mut self) -> &'buf str {
+    pub(crate) fn read_host_str(&mut self) -> &'buf str {
         unsafe { self.scanner.read_while_as_str_unchecked(is_host) }
     }
 
@@ -957,7 +952,7 @@ impl<'buf> Parser<'buf> {
     }
 }
 
-fn parse_uri_param<'a>(parser: &mut Parser<'a>) -> Result<ParamRef<'a>> {
+fn parse_uri_param<'a>(parser: &mut SipParser<'a>) -> Result<ParamRef<'a>> {
     // SAFETY: `is_param` only accepts ASCII bytes, which are
     // always valid UTF-8.
     let mut param = unsafe { parser.parse_param_unchecked(is_param)? };
@@ -970,7 +965,7 @@ fn parse_uri_param<'a>(parser: &mut Parser<'a>) -> Result<ParamRef<'a>> {
 }
 
 #[inline]
-pub(crate) fn parse_via_param<'a>(parser: &mut Parser<'a>) -> Result<ParamRef<'a>> {
+pub(crate) fn parse_via_param<'a>(parser: &mut SipParser<'a>) -> Result<ParamRef<'a>> {
     // SAFETY: `is_via_param` only accepts ASCII bytes, which
     // are always valid UTF-8.
     unsafe { parser.parse_param_unchecked(is_via_param) }

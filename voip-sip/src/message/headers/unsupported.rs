@@ -3,31 +3,24 @@ use std::{fmt, str};
 use itertools::Itertools;
 
 use crate::error::Result;
-use crate::macros::comma_separated_header_value;
-use crate::parser::{HeaderParser, Parser};
+use crate::macros::parse_comma_separated_header_value;
+use crate::parser::{HeaderParser, SipParser};
 
-/// The `Unsupported` SIP header.
-///
-/// Lists the features not supported by the `UAS`.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Unsupported(Vec<String>);
 
 impl HeaderParser for Unsupported {
     const NAME: &'static str = "Unsupported";
 
-    /*
-     * Unsupported  =  "Unsupported" HCOLON option-tag
-     * *(COMMA option-tag)
-     */
-    fn parse(parser: &mut Parser) -> Result<Self> {
-        let tags = comma_separated_header_value!(parser => parser.parse_token()?.into());
+    fn parse(parser: &mut SipParser) -> Result<Self> {
+        let tags = parse_comma_separated_header_value!(parser => parser.parse_token()?.to_owned());
 
-        Ok(Unsupported(tags))
+        Ok(Self(tags))
     }
 }
 
 impl fmt::Display for Unsupported {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", Unsupported::NAME, self.0.iter().format(", "))
+        write!(f, "{}: {}", Self::NAME, self.0.iter().format(", "))
     }
 }
