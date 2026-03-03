@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::error::Result;
-use crate::message::Challenge;
+use crate::message::auth::Challenge;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]

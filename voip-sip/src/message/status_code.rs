@@ -1,23 +1,6 @@
-use std::borrow::Cow;
+use std::borrow;
 
-use crate::message::ReasonPhrase;
-
-/// Classifies SIP status codes into categories.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
-pub enum CodeClass {
-    /// Provisional responses (1xx)
-    Provisional,
-    /// Successful responses (2xx)
-    Success,
-    /// Redirection responses (3xx)
-    Redirection,
-    /// Client failure responses (4xx)
-    ClientError,
-    /// Server failure responses (5xx)
-    ServerError,
-    /// Global failure responses (6xx)
-    GlobalFailure,
-}
+use crate::{error, message};
 
 /// Status Code enum for SIP messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
@@ -262,8 +245,9 @@ impl StatusCode {
             _ => None,
         }
     }
+
     /// Returns the reason text related to the status code.
-    pub const fn reason(&self) -> ReasonPhrase {
+    pub const fn reason(&self) -> message::ReasonPhrase {
         let reason_str = match self {
             Self::Trying => "Trying",
             Self::Ringing => "Ringing",
@@ -344,36 +328,19 @@ impl StatusCode {
             Self::Rejected => "Rejected",
         };
 
-        ReasonPhrase(Cow::Borrowed(reason_str))
+        message::ReasonPhrase(borrow::Cow::Borrowed(reason_str))
     }
 
-    ///  Returns the class of the status code.
-    pub fn class(&self) -> CodeClass {
-        match self.as_u16() {
-            100..=199 => CodeClass::Provisional,
-            200..=299 => CodeClass::Success,
-            300..=399 => CodeClass::Redirection,
-            400..=499 => CodeClass::ClientError,
-            500..=599 => CodeClass::ServerError,
-            600..=699 => CodeClass::GlobalFailure,
-            _ => unreachable!("StatusCode::class called on an invalid status code"),
-        }
-    }
-
-    /// Converts a `StatusCode` into its numeric code.
+    #[inline]
     pub const fn as_u16(self) -> u16 {
         self as u16
     }
 
-    /// Returns [`true`] if its status code is provisional (from `100` to
-    /// `199`), and [`false`] otherwise.
     #[inline]
     pub fn is_provisional(&self) -> bool {
-        matches!(self.class(), CodeClass::Provisional)
+        matches!(self.as_u16(), 100..=199)
     }
 
-    /// Returns [`true`]  if its status code is final (from `200` to `699` ),
-    /// and [`false`] otherwise.
     #[inline]
     pub fn is_final(&self) -> bool {
         !self.is_provisional()
@@ -381,14 +348,15 @@ impl StatusCode {
 }
 
 impl TryFrom<u16> for StatusCode {
-    type Error = crate::Error;
+    type Error = error::Error;
+
     fn try_from(code: u16) -> Result<Self, Self::Error> {
-        Self::from_u16(code).ok_or(crate::Error::InvalidStatusCode)
+        Self::from_u16(code).ok_or(error::Error::InvalidStatusCode)
     }
 }
 
 impl TryFrom<&[u8]> for StatusCode {
-    type Error = ();
+    type Error = error::Error;
 
     fn try_from(code: &[u8]) -> Result<Self, Self::Error> {
         Ok(match code {
@@ -469,7 +437,7 @@ impl TryFrom<&[u8]> for StatusCode {
             b"606" => Self::NotAcceptableAnywhere,
             b"607" => Self::Unwanted,
             b"608" => Self::Rejected,
-            _ => return Err(()),
+            _ => return Err(error::Error::InvalidStatusCode),
         })
     }
 }

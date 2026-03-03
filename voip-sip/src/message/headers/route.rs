@@ -2,7 +2,8 @@ use std::fmt;
 
 use crate::error::Result;
 use crate::macros::parse_header_param;
-use crate::message::{NameAddr, Params};
+use crate::message::param::Params;
+use crate::message::sip_uri::NameAddr;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -24,7 +25,7 @@ impl HeaderParser for Route {
 impl fmt::Display for Route {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: ", Self::NAME)?;
-        
+
         write!(f, "{}", self.name_addr)?;
 
         if let Some(param) = &self.params {
@@ -34,5 +35,3 @@ impl fmt::Display for Route {
         Ok(())
     }
 }
-
-

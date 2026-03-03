@@ -1,23 +1,9 @@
-use std::ops::Range;
 use std::str::{self, Utf8Error};
 
 use thiserror::Error;
 use utils::{Position, ScannerError};
 
-use crate::message::{CodeClass, Method, StatusCode};
-
 pub type Result<T> = std::result::Result<T, Error>;
-
-// impl std::convert::From<tokio::sync::mpsc::error::SendError<crate::transport::TransportMessage>>
-//     for Error
-// {
-//     fn from(
-//         value:
-// tokio::sync::mpsc::error::SendError<crate::transport::TransportMessage>,
-//     ) -> Self {
-//         Self::ChannelClosed
-//     }
-// }
 
 impl std::convert::From<Utf8Error> for Error {
     fn from(value: Utf8Error) -> Self {
@@ -56,9 +42,6 @@ pub enum Error {
 
     #[error("Unsupported transport")]
     UnsupportedTransport,
-
-    #[error("Poisoned lock")]
-    PoisonedLock,
 
     #[error("Invalid Status Code")]
     InvalidStatusCode,
@@ -126,7 +109,7 @@ pub enum TransactionError {
     FailedToSendMessage(String),
     #[error("Timeout reached after send message")]
     Timeout, //     #[error("The transaction is no longer valid")]
-             // Invalid,
+    // Invalid,
     #[error("invalid State")]
-    InvalidState
+    InvalidState,
 }

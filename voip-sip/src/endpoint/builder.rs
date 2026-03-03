@@ -3,17 +3,15 @@ use std::sync::Arc;
 
 use utils::DnsResolver;
 
-use crate::message::headers::{Accept, Allow, Header, Supported};
-
-use crate::transport::tcp::TcpListener;
-use crate::transport::ws::WebSocketListener;
-use crate::transport::{SipTransport, Transport, TransportModule};
-
-use crate::Result;
 use crate::endpoint::EndpointInner;
 use crate::endpoint::module::{Module, Modules};
+use crate::message::headers::{Accept, Allow, Header, Supported};
+use crate::message::method::Method;
+use crate::transport::tcp::TcpListener;
 use crate::transport::udp::UdpTransport;
-use crate::{Endpoint, MediaType, Method};
+use crate::transport::ws::WebSocketListener;
+use crate::transport::{SipTransport, Transport, TransportModule};
+use crate::{Endpoint, MediaType, Result};
 
 #[derive(Default)]
 pub struct EndpointTransports {
@@ -23,17 +21,17 @@ pub struct EndpointTransports {
 }
 
 impl EndpointTransports {
-    async fn start_udp(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
+    async fn bind_udp(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
         let udp = UdpTransport::bind(addr).await?;
         log::info!("SIP UDP transport started, bound to: {}", udp.local_addr());
         endpoint
             .transports()
-            .register_transport(Transport::new(udp.clone()))?;
+            .register_transport(Transport::new(udp.clone()));
         tokio::spawn(udp.receive_datagram(endpoint));
         Ok(())
     }
 
-    async fn start_tcp(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
+    async fn bind_tcp(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
         let tcp = TcpListener::bind(addr).await?;
         log::info!(
             "SIP TCP listener ready for incoming connections at: {}",
@@ -43,7 +41,7 @@ impl EndpointTransports {
         Ok(())
     }
 
-    async fn start_ws(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
+    async fn bind_ws(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
         let ws = WebSocketListener::bind(addr).await?;
         log::info!(
             "SIP WS listener ready for incoming connections at: {}",
@@ -78,15 +76,15 @@ impl EndpointTransports {
         Ok(())
     }
 
-    pub async fn listen(mut self, endpoint: Endpoint) -> crate::Result<()> {
+    pub async fn bind(mut self, endpoint: Endpoint) -> crate::Result<()> {
         while let Some(addr) = self.udp_addrs.pop() {
-            self.start_udp(addr, endpoint.clone()).await?;
+            self.bind_udp(addr, endpoint.clone()).await?;
         }
         while let Some(addr) = self.tcp_addrs.pop() {
-            self.start_tcp(addr, endpoint.clone()).await?;
+            self.bind_tcp(addr, endpoint.clone()).await?;
         }
         while let Some(addr) = self.ws_addrs.pop() {
-            self.start_ws(addr, endpoint.clone()).await?;
+            self.bind_ws(addr, endpoint.clone()).await?;
         }
         Ok(())
     }
@@ -116,45 +114,35 @@ impl EndpointBuilder {
         }
     }
 
-    /// Sets the endpoint name.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use voip::*;
-    /// let endpoint = endpoint::EndpointBuilder::new()
-    ///     .with_name("My Endpoint")
-    ///     .build();
-    /// ```
-    pub fn with_name<T: AsRef<str>>(mut self, s: T) -> Self {
-        self.name = s.as_ref().to_string();
+    pub fn name(&mut self, name: String) -> &mut EndpointBuilder {
+        self.name = name;
 
         self
     }
 
-    pub fn with_module<M: Module>(mut self, module: M) -> Self {
+    pub fn module<M: Module>(&mut self, module: M) -> &mut EndpointBuilder {
         self.modules.add_module(module);
 
         self
     }
 
-    pub fn with_transports(mut self, transports: EndpointTransports) -> Self {
+    pub fn transports(&mut self, transports: EndpointTransports) -> &mut EndpointBuilder {
         self.transports = transports;
 
         self
     }
 
-    pub fn with_allow(&mut self, sip_method: Method) -> &mut Self {
+    pub fn allow(&mut self, sip_method: Method) -> &mut EndpointBuilder {
         self.allow.push(sip_method);
         self
     }
 
-    pub fn with_accept(&mut self, media_type: MediaType) -> &mut Self {
+    pub fn accept(&mut self, media_type: MediaType) -> &mut EndpointBuilder {
         self.accept.push(media_type);
         self
     }
 
-    pub fn with_supported(&mut self, tag: String) -> &mut Self {
+    pub fn supported(&mut self, tag: String) -> &mut EndpointBuilder {
         self.supported.add_tag(tag);
         self
     }
@@ -186,7 +174,7 @@ impl EndpointBuilder {
             }),
         };
 
-        self.transports.listen(endpoint.clone()).await?;
+        self.transports.bind(endpoint.clone()).await?;
 
         Ok(endpoint)
     }

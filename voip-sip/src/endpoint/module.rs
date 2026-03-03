@@ -1,14 +1,10 @@
 use downcast_rs::{Downcast, impl_downcast};
 use utils::ToTake;
 
-use crate::{
-    Endpoint,
-    transport::{
-        incoming::{IncomingRequest, IncomingResponse},
-        outgoing::{OutgoingRequest, OutgoingResponse},
-    },
-    endpoint::EndpointBuilder,
-};
+use crate::Endpoint;
+use crate::endpoint::EndpointBuilder;
+use crate::transport::incoming::{IncomingRequest, IncomingResponse};
+use crate::transport::outgoing::{OutgoingRequest, OutgoingResponse};
 
 /// A trait for endpoint modules.
 #[allow(unused)]

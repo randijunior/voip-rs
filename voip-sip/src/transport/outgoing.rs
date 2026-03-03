@@ -91,11 +91,11 @@ impl Encode for OutgoingResponse {
         write!(
             writer,
             "SIP/2.0 {} {}\r\n",
-            response.status().as_u16(),
-            response.reason().as_str()
+            response.status_line.code.as_u16(),
+            response.status_line.reason.as_str()
         )?;
-        write!(writer, "{}", response.headers())?;
-        write_body(&mut writer, response.body())?;
+        write!(writer, "{}", response.headers)?;
+        write_body(&mut writer, response.body.as_ref())?;
 
         Ok(writer.into_inner().freeze())
     }

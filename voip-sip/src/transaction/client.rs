@@ -7,13 +7,14 @@ use utils::PeekableReceiver;
 use crate::error::TransactionError;
 use crate::message::Request;
 use crate::message::headers::{Header, Via};
+use crate::message::method::Method;
 use crate::transaction::fsm::{State, StateMachine};
 use crate::transaction::manager::TransactionKey;
 use crate::transaction::{Role, T1, T4, TransactionMessage};
 use crate::transport::Transport;
 use crate::transport::incoming::IncomingResponse;
 use crate::transport::outgoing::OutgoingRequest;
-use crate::{Endpoint, Method, Result, find_map_mut_header};
+use crate::{Endpoint, Result, find_map_mut_header};
 
 // ACK para 2xx é responsabilidade do TU.
 
@@ -119,7 +120,9 @@ impl ClientTransaction {
         match self
             .channel
             .recv_if(|msg| match msg {
-                TransactionMessage::Response(response) if response.status().is_provisional() => {
+                TransactionMessage::Response(response)
+                    if response.status_line.code.is_provisional() =>
+                {
                     true
                 }
                 _ => false,
@@ -150,9 +153,7 @@ impl ClientTransaction {
                         }
                         Ok(Err(_)) => {
                             // retransmit
-                            self.endpoint
-                                .send_request(&mut self.request)
-                                .await?;
+                            self.endpoint.send_request(&mut self.request).await?;
                             retrans_interval *= 2;
                             continue;
                         }
@@ -196,7 +197,7 @@ impl ClientTransaction {
         };
 
         if self.request.request.req_line.method == Method::Invite
-            && let 200..299 = response.status().as_u16()
+            && let 200..299 = response.status_line.code.as_u16()
             && matches!(
                 self.state_machine.state(),
                 State::Calling | State::Proceeding
@@ -215,9 +216,7 @@ impl ClientTransaction {
         if self.request.request.req_line.method == Method::Invite {
             // send ACK
             let mut ack_request = self.endpoint.create_ack_request(&self.request, &response);
-            self.endpoint
-                .send_request(&mut ack_request)
-                .await?;
+            self.endpoint.send_request(&mut ack_request).await?;
 
             // timer d fires
             let timer_d = Instant::now() + 64 * T1;
@@ -254,7 +253,7 @@ impl ClientTransaction {
 
 impl Drop for ClientTransaction {
     fn drop(&mut self) {
-        self.endpoint.transactions().remove(&self.key);
+        self.endpoint.transactions().remove_transaction(&self.key);
         log::trace!("Transaction Destroyed [{:#?}] ({:p})", Role::UAC, &self);
     }
 }
@@ -262,13 +261,13 @@ impl Drop for ClientTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assert_eq_state;
     use crate::error::{Error, TransactionError};
     use crate::test_utils::transaction::{
         CODE_100_TRYING, CODE_180_RINGING, CODE_202_ACCEPTED, CODE_301_MOVED_PERMANENTLY,
         CODE_404_NOT_FOUND, CODE_504_SERVER_TIMEOUT, CODE_603_DECLINE, ClientTestContext,
         SendRequestContext,
     };
-    use crate::{Method, assert_eq_state};
 
     // INVITE Client tests
 
@@ -453,7 +452,7 @@ mod tests {
 
         let req = ctx.transport.get_last_sent_request().expect("A request");
         assert_eq!(
-            req.method(),
+            req.req_line.method,
             Method::Ack,
             "client INVITE must generate an ACK request when receiving 3xx response"
         );
@@ -472,7 +471,7 @@ mod tests {
 
         let req = ctx.transport.get_last_sent_request().expect("A request");
         assert_eq!(
-            req.method(),
+            req.req_line.method,
             Method::Ack,
             "client INVITE must generate an ACK request when receiving 4xx response"
         );
@@ -491,7 +490,7 @@ mod tests {
 
         let req = ctx.transport.get_last_sent_request().expect("A request");
         assert_eq!(
-            req.method(),
+            req.req_line.method,
             Method::Ack,
             "client INVITE must generate an ACK request when receiving 5xx response"
         );
@@ -510,7 +509,7 @@ mod tests {
 
         let req = ctx.transport.get_last_sent_request().expect("A request");
         assert_eq!(
-            req.method(),
+            req.req_line.method,
             Method::Ack,
             "client INVITE must generate an ACK request when receiving 6xx response"
         );
@@ -661,7 +660,7 @@ mod tests {
 
         let req = ctx.transport.get_last_sent_request().expect("A request");
         assert_eq!(
-            req.method(),
+            req.req_line.method,
             Method::Ack,
             "client INVITE must generate an ACK request when receiving 3xx response"
         );
@@ -694,7 +693,7 @@ mod tests {
 
         let req = ctx.transport.get_last_sent_request().expect("A request");
         assert_eq!(
-            req.method(),
+            req.req_line.method,
             Method::Ack,
             "client INVITE must generate an ACK request when receiving 4xx response"
         );
@@ -727,7 +726,7 @@ mod tests {
 
         let req = ctx.transport.get_last_sent_request().expect("A request");
         assert_eq!(
-            req.method(),
+            req.req_line.method,
             Method::Ack,
             "client INVITE must generate an ACK request when receiving 5xx response"
         );
@@ -760,7 +759,7 @@ mod tests {
 
         let req = ctx.transport.get_last_sent_request().expect("A request");
         assert_eq!(
-            req.method(),
+            req.req_line.method,
             Method::Ack,
             "client INVITE must generate an ACK request when receiving 6xx response"
         );
@@ -781,8 +780,7 @@ mod tests {
             .expect("Expected provisional response, but received None");
 
         assert_eq!(
-            incoming.response.status(),
-            CODE_100_TRYING,
+            incoming.response.status_line.code, CODE_100_TRYING,
             "should match 100 status code"
         );
 
@@ -794,8 +792,7 @@ mod tests {
             .expect("Expected provisional response, but received None");
 
         assert_eq!(
-            incoming.response.status(),
-            CODE_180_RINGING,
+            incoming.response.status_line.code, CODE_180_RINGING,
             "should match 180 status code"
         );
     }
@@ -1129,8 +1126,7 @@ mod tests {
             .expect("Expected provisional response, but received None");
 
         assert_eq!(
-            response.response.status(),
-            CODE_100_TRYING,
+            response.response.status_line.code, CODE_100_TRYING,
             "should match 100 status code"
         );
 
@@ -1142,8 +1138,7 @@ mod tests {
             .expect("Expected provisional response, but received None");
 
         assert_eq!(
-            response.response.status(),
-            CODE_180_RINGING,
+            response.response.status_line.code, CODE_180_RINGING,
             "should match 180 status code"
         );
     }

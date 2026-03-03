@@ -4,35 +4,29 @@
 mod builder;
 mod module;
 
-pub use module::{ReceivedRequest, ReceivedResponse};
-pub use module::Module;
-
-pub use builder::{EndpointBuilder, EndpointTransports};
-
 use std::any::type_name;
 use std::borrow::Cow;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
+pub use builder::{EndpointBuilder, EndpointTransports};
 use bytes::Bytes;
-
+pub use module::{Module, ReceivedRequest, ReceivedResponse};
 use utils::{DnsResolver, ToTake};
 
-
-
-use crate::message::headers::{
-    CSeq, Header, Headers, Route,
-};
-use crate::message::{
-    DomainName, Host, MandatoryHeaders, NameAddr, ReasonPhrase, Request, Response, SipMessage,
-    StatusCode, StatusLine, Uri,
-};
-use crate::transaction::manager::TsxModule;
-use crate::transport::incoming::{IncomingInfo, IncomingRequest, IncomingResponse};
-use crate::transport::outgoing::{Encode, OutgoingRequest, OutgoingResponse, TargetTransportInfo};
-use crate::transport::{Transport, TransportModule, TransportMessage};
+use crate::Result;
 use crate::endpoint::module::Modules;
-use crate::{Result, Method};
+use crate::message::headers::{CSeq, Header, Headers, Route};
+use crate::message::method::Method;
+use crate::message::sip_uri::{DomainName, Host, NameAddr, Uri};
+use crate::message::status_code::StatusCode;
+use crate::message::{ReasonPhrase, Request, Response, SipMessage, StatusLine};
+use crate::transaction::manager::TsxModule;
+use crate::transport::incoming::{
+    IncomingInfo, IncomingRequest, IncomingResponse, MandatoryHeaders,
+};
+use crate::transport::outgoing::{Encode, OutgoingRequest, OutgoingResponse, TargetTransportInfo};
+use crate::transport::{Transport, TransportMessage, TransportModule};
 
 struct EndpointInner {
     /// The transport module for the endpoint.
@@ -146,7 +140,7 @@ impl Endpoint {
             None => code.reason(),
             Some(reason) => reason.into(),
         };
-        let status_line = StatusLine::new(code, reason);
+        let status_line = StatusLine { code, reason };
         let response = Response::with_headers(status_line, headers);
 
         // Done.
@@ -166,13 +160,16 @@ impl Endpoint {
         response: &IncomingResponse,
     ) -> OutgoingRequest {
         assert!(
-            matches!(response.status().as_u16(), 300..699),
+            matches!(response.status_line.code.as_u16(), 300..699),
             "message must be a 300-699 final response"
         );
         let target = outgoing.request.req_line.uri.clone();
         // Clone: Via, To, From, Max-Forwards, Call-ID and CSeq from response.
         let headers = MandatoryHeaders {
-            cseq: CSeq::new(response.incoming_info.mandatory_headers.cseq.cseq(), Method::Ack),
+            cseq: CSeq::new(
+                response.incoming_info.mandatory_headers.cseq.cseq(),
+                Method::Ack,
+            ),
             ..response.incoming_info.mandatory_headers.clone()
         }
         .into_headers();
@@ -219,8 +216,8 @@ impl Endpoint {
         }
         log::debug!(
             "Sending Response {} {} to /{}",
-            response.status().as_u16(),
-            response.reason().as_str(),
+            response.status_line.code.as_u16(),
+            response.status_line.reason.as_str(),
             response.target_info.target
         );
 
@@ -339,7 +336,7 @@ impl Endpoint {
                 .await?;
             }
             Ok(SipMessage::Response(response)) => {
-                let mut headers: MandatoryHeaders = response.headers().try_into()?;
+                let mut headers: MandatoryHeaders = (&response.headers).try_into()?;
                 // 4. Server Behavior
                 // the server MUST insert a "received" parameter containing the source
                 // IP address that the request came from.
@@ -374,8 +371,8 @@ impl Endpoint {
     async fn on_response(&self, response: IncomingResponse) -> Result<()> {
         log::debug!(
             "<= Response ({} {})",
-            response.status().as_u16(),
-            response.reason().as_str()
+            response.status_line.code.as_u16(),
+            response.status_line.reason.as_str()
         );
 
         let mut response = Some(response);
@@ -393,8 +390,8 @@ impl Endpoint {
         if let Some(response) = response {
             log::info!(
                 "Response ({} {}) from /{} was unhandled by any module",
-                response.status().as_u16(),
-                response.reason().as_str(),
+                response.status_line.code.as_u16(),
+                response.status_line.reason.as_str(),
                 response.incoming_info.transport.packet.source
             );
         }
@@ -404,7 +401,7 @@ impl Endpoint {
     async fn on_request(&self, request: IncomingRequest) -> Result<()> {
         log::debug!(
             "<= Request {} from /{}",
-            request.request.method(),
+            request.req_line.method,
             request.incoming_info.transport.packet.source
         );
 
@@ -412,7 +409,10 @@ impl Endpoint {
 
         for module in self.inner.modules.modules() {
             module
-                .on_receive_request(module::ReceivedRequest::new(ToTake::new(&mut request)), self)
+                .on_receive_request(
+                    module::ReceivedRequest::new(ToTake::new(&mut request)),
+                    self,
+                )
                 .await;
 
             if request.is_none() {
@@ -423,7 +423,7 @@ impl Endpoint {
         if let Some(msg) = request {
             log::debug!(
                 "Request ({}, cseq={}) from /{} was unhandled",
-                msg.request.method(),
+                msg.request.req_line.method,
                 msg.incoming_info.mandatory_headers.cseq.cseq(),
                 msg.incoming_info.transport.packet.source
             );

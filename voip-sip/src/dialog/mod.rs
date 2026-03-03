@@ -4,12 +4,16 @@ pub mod ua;
 
 pub use ua::UaModule;
 
+use crate::endpoint::Endpoint;
 use crate::error::{DialogError, Result};
+use crate::message::ReasonPhrase;
 use crate::message::headers::{CallId, Contact, From, Header, Headers, To};
-use crate::message::{Method, Params, ReasonPhrase, Scheme, StatusCode, Uri};
+use crate::message::method::Method;
+use crate::message::param::Params;
+use crate::message::sip_uri::{Scheme, Uri};
+use crate::message::status_code::StatusCode;
 use crate::transaction::Role;
 use crate::transport::incoming::{IncomingRequest, IncomingResponse};
-use crate::endpoint::Endpoint;
 
 /// Returns `true` if this method can establish a dialog
 const fn can_establish_a_dialog(method: &Method) -> bool {
@@ -190,7 +194,7 @@ impl RouteSet {
     }
 }
 
-impl  Drop for Dialog {
+impl Drop for Dialog {
     fn drop(&mut self) {
         self.endpoint.dialogs().remove_dialog(&self.id);
     }

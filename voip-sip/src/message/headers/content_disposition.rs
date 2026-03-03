@@ -2,7 +2,7 @@ use core::fmt;
 
 use crate::error::Result;
 use crate::macros::parse_header_param;
-use crate::message::Params;
+use crate::message::param::Params;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -18,10 +18,7 @@ impl HeaderParser for ContentDisposition {
         let r#type = parser.parse_token()?.to_owned();
         let params = parse_header_param!(parser);
 
-        Ok(Self {
-            r#type,
-            params,
-        })
+        Ok(Self { r#type, params })
     }
 }
 

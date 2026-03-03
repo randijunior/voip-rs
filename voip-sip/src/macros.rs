@@ -2,14 +2,14 @@ macro_rules! parse_header_param {
     ($scanner:ident) => (
         $crate::macros::parse_param!(
             $scanner,
-            $crate::parser::SipParser::parse_ref_param,
+            $crate::parser::SipParser::parse_param_ref,
         )
     );
 
     ($scanner:ident, $($name:ident = $var:expr),*) => (
         $crate::macros::parse_param!(
             $scanner,
-            $crate::parser::SipParser::parse_ref_param,
+            $crate::parser::SipParser::parse_param_ref,
             $($name = $var),*
         )
     );
@@ -24,7 +24,7 @@ macro_rules! parse_param {
         $scanner.skip_ws();
         match $scanner.peek() {
             Some(b';') => {
-                let mut params = $crate::message::Params::new();
+                let mut params = $crate::message::param::Params::default();
                 while let Some(b';') = $scanner.peek() {
                         // take ';' character
                         let _ = $scanner.read();
@@ -139,6 +139,7 @@ macro_rules! find_map_mut_header {
 }
 
 pub(crate) use {
-    comma_separated, parse_comma_separated_header_value, parse_header_param, parse_param, try_parse_hdr,
+    comma_separated, parse_comma_separated_header_value, parse_header_param, parse_param,
+    try_parse_hdr,
 };
 pub use {filter_map_header, find_map_header, find_map_mut_header, headers};

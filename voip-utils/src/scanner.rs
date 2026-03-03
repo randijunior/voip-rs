@@ -261,7 +261,6 @@ impl<'buf> Scanner<'buf> {
 
     pub fn read_until_any_as_str(&mut self, slice: &[u8]) -> Result<&'buf str> {
         self.read_while_as_str(|b| !slice.contains(&b))
-        
     }
 
     /// Reads bytes while `predicate` returns true and converts them to a string

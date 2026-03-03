@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use tokio::net::{ToSocketAddrs, UdpSocket};
 
-use super::{Packet, SipTransport, Transport, SipTransportType};
+use super::{Packet, SipTransport, SipTransportType, Transport};
+use crate::endpoint::Endpoint;
 use crate::error::Result;
 use crate::transport::{KEEPALIVE_REQUEST, KEEPALIVE_RESPONSE, TransportMessage};
-use crate::endpoint::Endpoint;
 
 #[derive(Debug)]
 struct UdpInner {
@@ -59,7 +59,11 @@ impl UdpTransport {
             let datagram = &buf[..len];
 
             if datagram == KEEPALIVE_REQUEST {
-                self.inner.sock.send_to(KEEPALIVE_RESPONSE, source).await.ok();
+                self.inner
+                    .sock
+                    .send_to(KEEPALIVE_RESPONSE, source)
+                    .await
+                    .ok();
                 continue;
             }
 

@@ -3,8 +3,8 @@ use std::str::{self, FromStr};
 
 use crate::error::Result;
 use crate::macros::parse_header_param;
-use crate::message::headers::TAG_PARAM;
-use crate::message::{Params, SipUri};
+use crate::message::param::{Params, TAG_PARAM};
+use crate::message::sip_uri::SipUri;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -45,7 +45,7 @@ impl HeaderParser for From {
 impl fmt::Display for From {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: ", Self::NAME)?;
-        
+
         match &self.uri {
             SipUri::Uri(uri) => write!(f, "{}", uri)?,
             SipUri::NameAddr(name_addr) => write!(f, "{}", name_addr)?,

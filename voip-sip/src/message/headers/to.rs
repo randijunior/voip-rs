@@ -5,8 +5,8 @@ use std::str::{
 
 use crate::error::Result;
 use crate::macros::parse_header_param;
-use crate::message::headers::TAG_PARAM;
-use crate::message::{Params, SipUri};
+use crate::message::param::{Params, TAG_PARAM};
+use crate::message::sip_uri::SipUri;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]

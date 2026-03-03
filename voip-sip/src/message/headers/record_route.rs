@@ -2,7 +2,8 @@ use std::fmt;
 
 use crate::error::Result;
 use crate::macros::parse_header_param;
-use crate::message::{NameAddr, Params};
+use crate::message::param::Params;
+use crate::message::sip_uri::NameAddr;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -41,4 +42,3 @@ impl fmt::Display for RecordRoute {
         Ok(())
     }
 }
-

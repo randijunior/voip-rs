@@ -5,14 +5,15 @@ use std::str::FromStr;
 use bytes::Bytes;
 
 use crate::endpoint::{Endpoint, EndpointBuilder};
+use crate::message::Request;
 use crate::message::headers::{CSeq, CallId, From, Header, Headers, MaxForwards, To, Via};
-use crate::message::{MandatoryHeaders, Method, Request, Uri};
-use crate::transport::incoming::{IncomingInfo, IncomingRequest};
+use crate::message::method::Method;
+use crate::message::sip_uri::Uri;
+use crate::transport::incoming::{IncomingInfo, IncomingRequest, MandatoryHeaders};
 use crate::transport::{Packet, Transport, TransportMessage};
 
 pub async fn create_test_endpoint() -> Endpoint {
-    EndpointBuilder::new()
-        .build().await.unwrap()
+    EndpointBuilder::new().build().await.unwrap()
 }
 
 fn create_test_headers(method: Method) -> Headers {
@@ -90,15 +91,15 @@ pub mod parser {
                 assert_eq!(&$expected.maddr_param, uri.maddr_param());
 
                 if let Some(params) = uri.other_params() {
-                    assert!($expected.parameters.is_some(), "missing parameters!");
-                    for param in $expected.parameters.unwrap().iter() {
-                        assert_eq!(params.get_named(param.name()), param.value());
+                    assert!($expected.params.is_some(), "missing parameters!");
+                    for param in $expected.params.unwrap().iter() {
+                        assert_eq!(params.param(&param.name), param.value.as_deref());
                     }
                 }
                 if let Some(headers) = uri.headers() {
                     assert!($expected.headers.is_some(), "missing headers!");
                     for param in $expected.headers.unwrap().iter() {
-                        assert_eq!(headers.get_named(param.name()), param.value());
+                        assert_eq!(headers.param(&param.name), param.value.as_deref());
                     }
                 }
 
@@ -120,7 +121,9 @@ pub mod transaction {
     use super::transport::MockTransport;
     use super::{create_test_endpoint, create_test_request};
     use crate::endpoint::Endpoint;
-    use crate::message::{Method, Request, StatusCode};
+    use crate::message::Request;
+    use crate::message::method::Method;
+    use crate::message::status_code::StatusCode;
     use crate::transaction::client::ClientTransaction;
     use crate::transaction::fsm::{self};
     use crate::transaction::{ServerTransaction, T1, T2, T4, TransactionMessage};

@@ -2,7 +2,8 @@ use std::{fmt, str};
 
 use crate::error::{ParseErrorKind as ErrorKind, Result};
 use crate::macros::comma_separated;
-use crate::message::{CNONCE, NC, NEXTNONCE, Param, QOP, RSPAUTH};
+use crate::message::auth::{CNONCE, NC, NEXTNONCE, QOP, RSPAUTH};
+use crate::message::param::Param;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -21,7 +22,7 @@ impl HeaderParser for AuthenticationInfo {
         let mut auth_info = Self::default();
 
         comma_separated!(parser => {
-            let Param {name, value} = parser.parse_ref_param()?.into();
+            let Param {name, value} = parser.parse_param_ref()?.into();
             match name.as_ref() {
                 NEXTNONCE => auth_info.nextnonce = value,
                 QOP => auth_info.qop = value,

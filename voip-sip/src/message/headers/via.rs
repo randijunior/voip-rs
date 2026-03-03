@@ -4,7 +4,8 @@ use std::str::{self, FromStr};
 
 use crate::error::{ParseErrorKind as ErrorKind, Result};
 use crate::macros::parse_param;
-use crate::message::{DomainName, Host, HostPort, Params};
+use crate::message::param::Params;
+use crate::message::sip_uri::{DomainName, Host, HostPort};
 use crate::parser::{
     HeaderParser, SIPV2, SipParser, {self},
 };
@@ -96,12 +97,12 @@ impl HeaderParser for Via {
             RECEIVED_PARAM = received,
             RPORT_PARAM = rport_p
         );
-        
+
         // TODO: Return err for invalid received and rport parameter.
         let received = received.and_then(|r: &str| r.parse().ok());
         let maddr = maddr.map(|a: &str| match a.parse() {
             Ok(addr) => Host::IpAddr(addr),
-            Err(_) => Host::DomainName(DomainName::new(a.to_string())),
+            Err(_) => Host::DomainName(DomainName::from(a)),
         });
         let ttl = ttl.map(|ttl: &str| ttl.parse().unwrap());
         let branch = branch.map(|b: &str| b.into());

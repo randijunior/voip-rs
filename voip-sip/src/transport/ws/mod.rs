@@ -30,7 +30,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
 use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
-use crate::transport::{Packet, SipTransport, Transport, TransportMessage, SipTransportType};
+use crate::transport::{Packet, SipTransport, SipTransportType, Transport, TransportMessage};
 
 const SIP: HeaderValue = HeaderValue::from_static("sip");
 
@@ -88,17 +88,13 @@ impl WebSocketTransport {
         let endpoint_clone = endpoint.clone();
         let transport_clone = transport.clone();
         // Handle connection in separate task
-        tokio::spawn(async move {
-            if let Err(e) =
-                handle_ws_connection(peer_addr, endpoint_clone, transport_clone, stream, rx).await
-            {
-                log::error!(
-                    "WS client connection handler failed for {}: {}",
-                    peer_addr,
-                    e
-                );
-            }
-        });
+        tokio::spawn(handle_ws_connection(
+            peer_addr,
+            endpoint_clone,
+            transport_clone,
+            stream,
+            rx,
+        ));
 
         Ok(transport)
     }
@@ -299,7 +295,7 @@ impl WebSocketListener {
         let transport = Transport::new(websocket);
 
         // Handle connection.
-        handle_ws_connection(peer_addr, endpoint, transport, ws_stream, rx).await?;
+        handle_ws_connection(peer_addr, endpoint, transport, ws_stream, rx).await;
 
         Ok(())
     }
@@ -311,17 +307,14 @@ async fn handle_ws_connection<S>(
     transport: Transport,
     stream: WebSocketStream<S>,
     mut rx: mpsc::Receiver<WsMessage>,
-) -> Result<()>
-where
+) where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     log::debug!("Handling WS connection from {}", addr);
 
     let (mut send, mut recv) = stream.split();
 
-    endpoint
-        .transports()
-        .register_transport(transport.clone())?;
+    endpoint.transports().register_transport(transport.clone());
 
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -342,7 +335,8 @@ where
                 break;
             }
             Err(e) => {
-                return Err(IoError::new(IoErrorKind::Other, e))?;
+                log::error!("Error receiving WebSocket message: {e}");
+                return;
             }
             _ => {
                 continue;
@@ -357,10 +351,8 @@ where
     }
 
     log::info!("WebSocket connection disconnected: {}", addr);
-    endpoint.transports().remove_transport(&transport.key())?;
+    endpoint.transports().remove_transport(&transport.key());
     send_task.abort();
-
-    Ok(())
 }
 
 fn make_http_response(status: u16, message: &'static str) -> Response<Full<bytes::Bytes>> {

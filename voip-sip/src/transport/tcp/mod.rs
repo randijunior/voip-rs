@@ -10,7 +10,9 @@ use tokio_stream::StreamExt;
 use tokio_util::codec::FramedRead;
 
 use super::decode::{FramedMessage, StreamingDecoder};
-use super::{KEEPALIVE_RESPONSE, Packet, SipTransport, Transport, TransportMessage, SipTransportType};
+use super::{
+    KEEPALIVE_RESPONSE, Packet, SipTransport, SipTransportType, Transport, TransportMessage,
+};
 use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 
@@ -53,9 +55,7 @@ impl TcpTransport {
         });
 
         // TODO: Start keep-alive timer.
-        endpoint
-            .transports()
-            .register_transport(transport.clone())?;
+        endpoint.transports().register_transport(transport.clone());
 
         let endpoint = endpoint.clone();
         let tcp = transport.clone();
@@ -153,9 +153,7 @@ impl TcpListener {
             remote_addr,
             write_half,
         });
-        endpoint
-            .transports()
-            .register_transport(transport.clone())?;
+        endpoint.transports().register_transport(transport.clone());
 
         if let Err(err) = tcp_read(read_half, addr, transport, endpoint).await {
             log::warn!("An error occured; error = {:#}", err);
@@ -189,7 +187,7 @@ async fn tcp_read(
             }
             None => {
                 log::info!("TCP connection disconnected: {}", peer);
-                endpoint.transports().remove_transport(&transport.key())?;
+                endpoint.transports().remove_transport(&transport.key());
                 break;
             }
         };

@@ -24,7 +24,7 @@ hyper = { version = "1.0", default-features = false, features = ["http1", "serve
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 rand = "0.9.2"
-pin-project-lite = "0.2"
+rustc-hash = "2.1.1"
 
 [dev-dependencies]
 assert_matches = "1.5"

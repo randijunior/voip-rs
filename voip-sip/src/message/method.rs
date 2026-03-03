@@ -3,7 +3,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// An SIP Method.
 ///
-/// This enum declares SIP methods as described by RFC3261 and Others.
+/// This enum declares SIP methods as described by `RFC3261` and Others.
 pub enum Method {
     /// SIP INVITE Method.
     Invite,
@@ -38,11 +38,6 @@ pub enum Method {
 }
 
 impl Method {
-    /// Returns the byte representation of a method.
-    pub fn as_bytes(&self) -> &'static [u8] {
-        self.as_str().as_bytes()
-    }
-
     pub fn is_invite(&self) -> bool {
         matches!(self, Self::Invite)
     }

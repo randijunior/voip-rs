@@ -1,6 +1,9 @@
-use crate::error::Error;
+use std::fmt::{self, Formatter, Result as FmtResult};
+use std::io::{self, Write};
+
 use bytes::{BufMut, Bytes, BytesMut};
-use std::{fmt::{self, Formatter, Result as FmtResult}, io::{self, Write}};
+
+use crate::error::Error;
 
 pub type Uri = String;
 
@@ -149,8 +152,12 @@ impl SessionDescription {
             write!(writer, "p={}\r\n", phone_number)?;
         }
         // c=<nettype> <addrtype> <connection-address>
-        if let Some(c) =  &self.connection_information {
-            write!(writer, "c={} {} {}\r\n", c.nettype, c.addrtype, c.conection_address)?;
+        if let Some(c) = &self.connection_information {
+            write!(
+                writer,
+                "c={} {} {}\r\n",
+                c.nettype, c.addrtype, c.conection_address
+            )?;
         }
         //  b=<bwtype>:<bandwidth>
         for b in self.bandwidth_information.iter() {
@@ -158,7 +165,11 @@ impl SessionDescription {
         }
         // t=<start-time> <stop-time>
         for t in self.time.iter() {
-            write!(writer, "t={} {}\r\n", t.time_active.start_time, t.time_active.stop_time)?;
+            write!(
+                writer,
+                "t={} {}\r\n",
+                t.time_active.start_time, t.time_active.stop_time
+            )?;
             // r=<repeat interval> <active duration> <offsets from start-time>
             for r in t.repeat_times.iter() {
                 write!(writer, "r={} {}", r.repeat_interval, r.active_duration)?;
@@ -171,9 +182,12 @@ impl SessionDescription {
 
         for attr in self.attributes.iter() {
             match attr {
-                Attribute { name, value: Some(v) } => {
+                Attribute {
+                    name,
+                    value: Some(v),
+                } => {
                     write!(writer, "a={}:{}\r\n", name, v)?;
-                },
+                }
                 Attribute { name, value: None } => {
                     write!(writer, "a={}\r\n", name)?;
                 }
@@ -187,7 +201,7 @@ impl SessionDescription {
                 write!(writer, "/{}", n)?;
             }
             write!(writer, " {}", m.proto)?;
-            
+
             for fmt in m.media_formats.iter() {
                 write!(writer, " {}", fmt)?;
             }
@@ -197,22 +211,29 @@ impl SessionDescription {
                 write!(writer, "t={}\r\n", title)?;
             }
 
-             // c=* (connection information -- optional if included at session level)
-             if let Some(c) =  &m.connection_information {
-                write!(writer, "c={} {} {}\r\n", c.nettype, c.addrtype, c.conection_address)?;
+            // c=* (connection information -- optional if included at session level)
+            if let Some(c) = &m.connection_information {
+                write!(
+                    writer,
+                    "c={} {} {}\r\n",
+                    c.nettype, c.addrtype, c.conection_address
+                )?;
             }
-    
-             // b=* (zero or more bandwidth information lines)
-             for b in m.bandwidth_information.iter() {
+
+            // b=* (zero or more bandwidth information lines)
+            for b in m.bandwidth_information.iter() {
                 write!(writer, "b={}:{}\r\n", b.bwtype, b.bandwidth)?;
             }
-    
+
             // a=* (zero or more media attribute lines)
             for attr in m.attributes.iter() {
                 match attr {
-                    Attribute { name, value: Some(v) } => {
+                    Attribute {
+                        name,
+                        value: Some(v),
+                    } => {
                         write!(writer, "a={}:{}\r\n", name, v)?;
-                    },
+                    }
                     Attribute { name, value: None } => {
                         write!(writer, "a={}\r\n", name)?;
                     }
@@ -253,7 +274,7 @@ impl fmt::Display for AddrType {
 
         f.write_str(match self {
             IP4 => "IP4",
-            IP6 => "IP6"
+            IP6 => "IP6",
         })
     }
 }
@@ -270,11 +291,10 @@ impl fmt::Display for NetType {
 
         f.write_str(match self {
             IN => "IN",
-            Other(str) => str.as_str()
+            Other(str) => str.as_str(),
         })
     }
 }
-
 
 #[derive(Clone)]
 pub struct ConnectionInformation {
@@ -309,7 +329,7 @@ impl fmt::Display for Bwtype {
             RR => "RR",
             RS => "RS",
             TIAS => "TIAS",
-            Other(str) => str.as_str()
+            Other(str) => str.as_str(),
         })
     }
 }
@@ -406,5 +426,5 @@ pub struct RtpMap {
     pub payload_type: String,
     pub enc_name: String,
     pub clock_rate: u32,
-    pub param: Option<String>
+    pub param: Option<String>,
 }

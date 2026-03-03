@@ -2,7 +2,7 @@ use std::{fmt, str};
 
 use crate::error::Result;
 use crate::macros::parse_header_param;
-use crate::message::Params;
+use crate::message::param::Params;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]

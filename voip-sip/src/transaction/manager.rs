@@ -4,25 +4,20 @@ use std::sync::Mutex;
 use tokio::sync::mpsc::{self};
 
 use super::{Role, TransactionMessage};
-use crate::message::HostPort;
+use crate::endpoint::{self, ReceivedRequest, ReceivedResponse};
+use crate::message::method::Method;
+use crate::message::sip_uri::HostPort;
 use crate::transport::incoming::{IncomingInfo, IncomingRequest, IncomingResponse};
-use crate::endpoint::{self, ReceivedResponse};
-use crate::endpoint::ReceivedRequest;
-use crate::{Endpoint, Method, RFC3261_BRANCH_ID};
+use crate::{Endpoint, RFC3261_BRANCH_ID};
 
 type TransactionEntry = mpsc::Sender<TransactionMessage>;
 
-
 #[derive(Default)]
 pub struct TsxModule {
-    transactions: Mutex<HashMap<TransactionKey, TransactionEntry>>,
+    transactions: Mutex<rustc_hash::FxHashMap<TransactionKey, TransactionEntry>>,
 }
 
 impl TsxModule {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     #[inline]
     pub(crate) fn add_transaction(&self, key: TransactionKey, entry: TransactionEntry) {
         let mut map = self.transactions.lock().expect("Lock failed");
@@ -31,7 +26,7 @@ impl TsxModule {
     }
 
     #[inline]
-    pub(crate) fn remove(&self, key: &TransactionKey) {
+    pub(crate) fn remove_transaction(&self, key: &TransactionKey) {
         let mut map = self.transactions.lock().expect("Lock failed");
 
         map.remove(key);
@@ -57,10 +52,13 @@ impl endpoint::Module for TsxModule {
         let Some(channel) = self.get_entry(&key) else {
             return;
         };
-        
+
         let request = request.take();
 
-       channel.send(TransactionMessage::Request(request)).await.unwrap();
+        channel
+            .send(TransactionMessage::Request(request))
+            .await
+            .unwrap();
     }
 
     async fn on_receive_response(&self, mut response: ReceivedResponse<'_>, _: &Endpoint) {
@@ -69,14 +67,12 @@ impl endpoint::Module for TsxModule {
         let Some(channel) = self.get_entry(&key) else {
             return;
         };
-        
+
         let response = response.take();
 
         let _res = channel.send(TransactionMessage::Response(response)).await;
     }
 }
-
-
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum TransactionKey {

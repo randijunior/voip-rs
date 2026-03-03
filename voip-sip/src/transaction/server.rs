@@ -4,15 +4,16 @@ use tokio::sync::mpsc::{self};
 use tokio::time::{Instant, sleep, timeout_at};
 use tokio_util::either::Either;
 
-use crate::Method;
+use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
-use crate::message::{CodeClass, ReasonPhrase, StatusCode};
+use crate::message::ReasonPhrase;
+use crate::message::method::Method;
+use crate::message::status_code::StatusCode;
 use crate::transaction::fsm::{State, StateMachine};
 use crate::transaction::manager::TransactionKey;
 use crate::transaction::{T1, T2, T4, TransactionMessage};
 use crate::transport::incoming::IncomingRequest;
 use crate::transport::outgoing::OutgoingResponse;
-use crate::endpoint::Endpoint;
 
 /// A Server Transaction.
 ///
@@ -54,7 +55,9 @@ impl ServerTransaction {
         let (sender, receiver) = mpsc::channel(10);
         let transaction_key = TransactionKey::from_request(&request);
 
-        endpoint.transactions().add_transaction(transaction_key.clone(), sender);
+        endpoint
+            .transactions()
+            .add_transaction(transaction_key.clone(), sender);
 
         Self {
             endpoint,
@@ -92,11 +95,10 @@ impl ServerTransaction {
         &mut self,
         mut response: OutgoingResponse,
     ) -> Result<()> {
-        let code = response.status();
+        let code = response.status_line.code;
 
-        assert_eq!(
-            code.class(),
-            CodeClass::Provisional,
+        assert!(
+            code.is_provisional(),
             "Invalid provisional response (expected 1xx) got {:?}",
             code
         );
@@ -139,11 +141,10 @@ impl ServerTransaction {
     ///
     /// Panics if the `response` is not final (`2xx-6xx`).
     pub async fn send_final_response(mut self, mut response: OutgoingResponse) -> Result<()> {
-        let code = response.status();
+        let code = response.status_line.code;
 
-        assert_ne!(
-            code.class(),
-            CodeClass::Provisional,
+        assert!(
+            code.is_final(),
             "Invalid final response (expected 2xx-6xx) got {:?}",
             code
         );
@@ -151,7 +152,7 @@ impl ServerTransaction {
         self.send_response(&mut response).await?;
 
         if self.request.req_line.method == Method::Invite {
-            if let 200..299 = response.status().as_u16() {
+            if let 200..299 = code.as_u16() {
                 self.state_machine.set_state(State::Terminated);
                 return Ok(());
             }
@@ -320,7 +321,9 @@ impl ServerTransaction {
 
 impl Drop for ServerTransaction {
     fn drop(&mut self) {
-        self.endpoint.transactions().remove(&self.transaction_key);
+        self.endpoint
+            .transactions()
+            .remove_transaction(&self.transaction_key);
     }
 }
 

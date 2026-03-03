@@ -4,24 +4,22 @@
 //! A rust library that implements the SIP protocol.
 //!
 
+pub mod dialog;
 pub mod endpoint;
 pub mod message;
 pub mod parser;
 pub mod transaction;
 pub mod transport;
-pub mod dialog;
 
 pub(crate) mod error;
 
 pub mod macros;
 
-pub use endpoint::{Endpoint};
-
-pub use utils::ToTake;
+pub use endpoint::Endpoint;
 use error::Error;
 pub use error::Result;
-pub use message::Method;
 use parser::SipParser;
+pub use utils::ToTake;
 
 #[cfg(test)]
 #[macro_use]
@@ -41,7 +39,7 @@ pub(crate) const RFC3261_BRANCH_ID: &str = "z9hG4bK";
 
 use rand::distr::{Alphanumeric, SampleString};
 
-use crate::message::Params;
+use crate::message::param::Params;
 
 pub(crate) fn generate_branch() -> String {
     generate_branch_n(8)
@@ -163,10 +161,7 @@ impl MediaType {
     /// Constructs a `MediaType` from a type and a subtype.
     pub fn new(mtype: String, subtype: String) -> Self {
         Self {
-            mimetype: MimeType {
-                mtype,
-                subtype,
-            },
+            mimetype: MimeType { mtype, subtype },
             param: None,
         }
     }

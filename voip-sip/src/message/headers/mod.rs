@@ -30,6 +30,7 @@ mod priority;
 mod proxy_authenticate;
 mod proxy_authorization;
 mod proxy_require;
+mod raw_header;
 mod record_route;
 mod reply_to;
 mod require;
@@ -45,7 +46,6 @@ mod user_agent;
 mod via;
 mod warning;
 mod www_authenticate;
-mod raw_header;
 
 use core::fmt;
 use std::convert;
@@ -83,6 +83,7 @@ pub use priority::Priority;
 pub use proxy_authenticate::ProxyAuthenticate;
 pub use proxy_authorization::ProxyAuthorization;
 pub use proxy_require::ProxyRequire;
+pub use raw_header::RawHeader;
 pub use record_route::RecordRoute;
 pub use reply_to::ReplyTo;
 pub use require::Require;
@@ -98,14 +99,9 @@ pub use user_agent::UserAgent;
 pub use via::Via;
 pub use warning::Warning;
 pub use www_authenticate::WWWAuthenticate;
-pub use raw_header::RawHeader;
-
-const TAG_PARAM: &str = "tag";
-const Q_PARAM: &str = "q";
-const EXPIRES_PARAM: &str = "expires";
 
 /// A colection of SIP Headers.
-#[derive(Default,Debug, PartialEq, Clone)]
+#[derive(Default, Debug, PartialEq, Clone)]
 pub struct Headers(Vec<Header>);
 
 impl Headers {
@@ -118,26 +114,21 @@ impl Headers {
         self.0.last()
     }
 
-
     pub fn last_mut(&mut self) -> Option<&mut Header> {
         self.0.last_mut()
     }
-
 
     pub fn first_mut(&mut self) -> Option<&mut Header> {
         self.0.first_mut()
     }
 
-
     pub fn remove(&mut self, index: usize) -> Header {
         self.0.remove(index)
     }
 
-
     pub fn insert(&mut self, index: usize, header: Header) {
         self.0.insert(index, header);
     }
-
 
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
@@ -269,7 +260,6 @@ impl FromIterator<Header> for Headers {
         Headers(iter.into_iter().collect())
     }
 }
-
 
 impl fmt::Display for Headers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

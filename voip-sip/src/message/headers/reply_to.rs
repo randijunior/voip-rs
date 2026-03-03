@@ -2,7 +2,8 @@ use std::fmt;
 
 use crate::error::Result;
 use crate::macros::parse_header_param;
-use crate::message::{Params, SipUri};
+use crate::message::param::Params;
+use crate::message::sip_uri::SipUri;
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -32,4 +33,3 @@ impl fmt::Display for ReplyTo {
         Ok(())
     }
 }
-

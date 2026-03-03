@@ -5,7 +5,8 @@ use tracing_subscriber::fmt::time::ChronoLocal;
 use voip::sip::endpoint::{
     Endpoint, EndpointTransports, Module as EndpointModule, ReceivedRequest,
 };
-use voip::sip::message::{Method, StatusCode};
+use voip::sip::message::method::Method;
+use voip::sip::message::status_code::StatusCode;
 
 pub struct SipStateless;
 
@@ -39,11 +40,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     transports.add_udp("0.0.0.0:8089")?;
 
-    let endpoint = Endpoint::builder()
-        .with_transports(transports)
-        .with_module(SipStateless)
-        .build()
-        .await?;
+    let mut builder = Endpoint::builder();
+
+    builder.transports(transports);
+    builder.module(SipStateless);
+
+    let endpoint = builder.build().await?;
 
     endpoint.run_forever().await?;
 

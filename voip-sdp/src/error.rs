@@ -1,7 +1,7 @@
 pub type Result<T> = std::result::Result<T, Error>;
 
 use thiserror::Error;
-use utils::{ScannerError};
+use utils::ScannerError;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum Error {
@@ -26,7 +26,7 @@ pub enum ParseSdpError {
     #[error("scanner error: {:#?}", 0)]
     ScannerError(ScannerError),
 
-    #[error("syntax error: {}", s,)]
+    #[error("syntax error: {}", s)]
     SyntaxError { s: String },
 }
 

@@ -26,11 +26,7 @@ impl HeaderParser for Warning {
         parser.read()?;
         let text = str::from_utf8(text)?.to_owned();
 
-        Ok(Warning {
-            code,
-            host,
-            text,
-        })
+        Ok(Warning { code, host, text })
     }
 }
 

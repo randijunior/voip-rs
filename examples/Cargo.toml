@@ -22,13 +22,4 @@ features = ["env-filter"]
 name = "sipstateless"
 path = "sipstateless.rs"
 
-[[example]]
-name = "uas"
-path = "uas.rs"
-
-[[example]]
-name = "sipecho"
-path = "sipecho.rs"
-
-
 

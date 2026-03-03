@@ -15,7 +15,6 @@
 //! - [`tcp`]: SIP over TCP transport implementation.
 //! - [`ws`]:  SIP over WebSocket transport implementation.
 
-use std::collections::HashMap;
 use std::fmt::{self, Formatter, Result as FmtResult};
 use std::io::{self};
 use std::net::{IpAddr, SocketAddr};
@@ -32,7 +31,7 @@ use utils::{NAPTR, Name, RData, SRV};
 use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 use crate::message::SipMessage;
-use crate::message::uri::{DomainName, Host, Scheme, Uri};
+use crate::message::sip_uri::{DomainName, Host, Scheme, Uri};
 use crate::parser::SipParser;
 use crate::transport::tcp::TcpTransport;
 use crate::transport::ws::WebSocketTransport;
@@ -54,7 +53,6 @@ pub const KEEPALIVE_RESPONSE: &[u8] = b"\r\n";
 
 /// Marks the end of headers in a SIP message.
 pub const MSG_HEADERS_END: &[u8] = b"\r\n\r\n";
-
 
 /// This type is a wrapper around a SIP transport implementation.
 #[derive(Clone)]
@@ -84,39 +82,34 @@ pub struct TransportConfig {
     // Enable NAPTR lookups
     naptrlookup: bool,
     // Enable DNS SRV lookups
-    srvlookup: bool
+    srvlookup: bool,
 }
 
 /// Module for SIP all transports.
+#[derive(Default)]
 pub struct TransportModule {
-    map: Mutex<HashMap<TransportKey, Transport>>,
+    map: Mutex<rustc_hash::FxHashMap<TransportKey, Transport>>,
 }
 
 impl TransportModule {
     /// Create a new `TransportModule` instance.
     pub fn new() -> Self {
-        TransportModule {
-            map: Mutex::new(HashMap::new()),
-        }
+        Self::default()
     }
 
     /// Add a new transport to the manager.
-    pub fn register_transport(&self, transport: Transport) -> Result<()> {
+    pub fn register_transport(&self, transport: Transport) {
         let key = transport.key();
-        let mut map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
+        let mut map = self.map.lock().expect("Lock failed");
 
         map.insert(key, transport);
-
-        Ok(())
     }
 
     /// Remove a transport by its key.
-    pub fn remove_transport(&self, key: &TransportKey) -> Result<()> {
-        let mut map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
+    pub fn remove_transport(&self, key: &TransportKey) {
+        let mut map = self.map.lock().expect("Lock failed");
 
         map.remove(key);
-
-        Ok(())
     }
 
     /// Select a suitable transport for the given `Uri`.
@@ -311,7 +304,7 @@ impl TransportModule {
     }
 
     fn get_by_key(&self, key: &TransportKey) -> Result<Option<Transport>> {
-        let map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
+        let map = self.map.lock().expect("Lock failed");
         Ok(map.get(key).cloned())
     }
 
@@ -320,7 +313,7 @@ impl TransportModule {
         protocol: SipTransportType,
         ip: IpAddr,
     ) -> Result<Option<Transport>> {
-        let map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
+        let map = self.map.lock().expect("Lock failed");
         let transport = map.iter().find(|(_key, transport)| {
             transport.transport_type() == protocol
                 && is_same_ip_family(&transport.local_addr().ip(), &ip)
@@ -359,16 +352,16 @@ impl TransportModule {
             _ => return Err(Error::UnsupportedTransport),
         };
 
-        self.register_transport(transport.clone())?;
+        self.register_transport(transport.clone());
 
         Ok(transport)
     }
 
     /// Return the number of transports registered.
-    pub fn transport_count(&self) -> Result<usize> {
-        let map = self.map.lock().map_err(|_| Error::PoisonedLock)?;
+    pub fn transport_count(&self) -> usize {
+        let map = self.map.lock().expect("Lock failed");
 
-        Ok(map.len())
+        map.len()
     }
 }
 
@@ -463,15 +456,13 @@ impl TryFrom<String> for SipTransportType {
 
 impl fmt::Display for SipTransportType {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        use self::SipTransportType::*;
-
         f.write_str(match self {
-            Udp => "UDP",
-            Tcp => "TCP",
-            Tls => "TLS",
-            Sctp => "SCTP",
-            Ws => "WS",
-            Wss => "WSS",
+            Self::Udp => "UDP",
+            Self::Tcp => "TCP",
+            Self::Tls => "TLS",
+            Self::Sctp => "SCTP",
+            Self::Ws => "WS",
+            Self::Wss => "WSS",
         })
     }
 }

@@ -1,15 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
+
 use tokio::sync::mpsc;
 
-
+use crate::Endpoint;
 use crate::dialog::{DialogId, DialogMessage};
-use crate::transport::incoming::{IncomingRequest};
-
-use crate::endpoint::{self, ReceivedResponse};
-use crate::endpoint::ReceivedRequest;
-use crate::{Endpoint, Method};
-
+use crate::endpoint::{self, ReceivedRequest, ReceivedResponse};
+use crate::message::method::Method;
+use crate::transport::incoming::IncomingRequest;
 
 #[derive(Default)]
 pub struct UaModule {
@@ -17,10 +15,6 @@ pub struct UaModule {
 }
 
 impl UaModule {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     // pub async fn handle_response(&self, response: IncomingResponse) -> Option<IncomingResponse> {
     //     let Some(sender) = self.get_dialog_from_response(&response) else {
     //         return Some(response);
@@ -78,7 +72,7 @@ impl endpoint::Module for UaModule {
         let Some(sender) = self.get_dialog_from_request(&request) else {
             return;
         };
-        
+
         let req = request.take();
 
         if sender.send(DialogMessage::Request(req)).await.is_err() {

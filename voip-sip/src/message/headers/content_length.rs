@@ -1,4 +1,4 @@
-use std::{str,fmt};
+use std::{fmt, str};
 
 use crate::error::Result;
 use crate::parser::{HeaderParser, SipParser};

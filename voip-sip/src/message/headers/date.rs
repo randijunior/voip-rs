@@ -7,7 +7,6 @@ use crate::parser::{HeaderParser, SipParser};
 #[repr(transparent)]
 pub struct Date(String);
 
-
 impl HeaderParser for Date {
     const NAME: &'static str = "Date";
 

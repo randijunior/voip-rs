@@ -254,7 +254,10 @@ impl<'buf> SdpParser<'buf> {
         let stop_time = self.scanner.read_u64()?;
 
         Ok(TimeDescription {
-            time_active: TimeActive { start_time, stop_time },
+            time_active: TimeActive {
+                start_time,
+                stop_time,
+            },
             repeat_times: vec![],
         })
     }
@@ -329,7 +332,12 @@ impl<'buf> SdpParser<'buf> {
 
         self.handle_new_line();
 
-        Ok(RtpMap { payload_type, enc_name: encoding_name, clock_rate, param: param })
+        Ok(RtpMap {
+            payload_type,
+            enc_name: encoding_name,
+            clock_rate,
+            param: param,
+        })
     }
 
     #[inline]
@@ -423,7 +431,6 @@ mod tests {
             "a=rtcp-fb:* ccm tmmbr\r\n",
         };
 
-        let sdp  = SdpParser::parse(sdp).unwrap();
-
+        let sdp = SdpParser::parse(sdp).unwrap();
     }
 }

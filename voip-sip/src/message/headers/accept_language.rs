@@ -6,8 +6,7 @@ use utils::is_alphabetic;
 use crate::Q;
 use crate::error::Result;
 use crate::macros::{parse_comma_separated_header_value, parse_header_param};
-use crate::message::Params;
-use crate::message::headers::Q_PARAM;
+use crate::message::param::{Params, Q_PARAM};
 use crate::parser::{HeaderParser, SipParser};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -25,9 +24,7 @@ pub struct LanguageTag(String);
 
 impl LanguageTag {
     pub fn parse(parser: &mut SipParser) -> Self {
-        let is_lang = |byte: u8| {
-            is_alphabetic(byte) || matches!(byte, b'*' | b'-') 
-        };
+        let is_lang = |byte: u8| is_alphabetic(byte) || matches!(byte, b'*' | b'-');
         let s = unsafe { parser.read_while_as_str_unchecked(is_lang) };
 
         Self(s.to_owned())
@@ -35,7 +32,7 @@ impl LanguageTag {
 }
 
 impl fmt::Display for LanguageTag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { 
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)?;
 
         Ok(())
