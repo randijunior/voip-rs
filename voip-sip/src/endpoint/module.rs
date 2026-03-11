@@ -1,26 +1,25 @@
 use downcast_rs::{Downcast, impl_downcast};
-use utils::ToTake;
 
+use super::ToTake;
 use crate::Endpoint;
 use crate::endpoint::EndpointBuilder;
 use crate::transport::incoming::{IncomingRequest, IncomingResponse};
 use crate::transport::outgoing::{OutgoingRequest, OutgoingResponse};
 
 /// A trait for endpoint modules.
-#[allow(unused)]
 #[async_trait::async_trait]
 pub trait Module: Downcast + Send + Sync + 'static {
     fn name(&self) -> &'static str;
 
-    fn on_load(&mut self, builder: &mut EndpointBuilder) {}
+    fn on_load(&mut self, _builder: &mut EndpointBuilder) {}
 
-    async fn on_receive_request(&self, request: ReceivedRequest<'_>, endpoint: &Endpoint) {}
+    async fn on_receive_request(&self, _request: ReceivedRequest<'_>, _endpoint: &Endpoint) {}
 
-    async fn on_receive_response(&self, response: ReceivedResponse<'_>, endpoint: &Endpoint) {}
+    async fn on_receive_response(&self, _response: ReceivedResponse<'_>, _endpoint: &Endpoint) {}
 
-    async fn on_send_request(&self, request: &mut OutgoingRequest) {}
+    async fn on_send_request(&self, _request: &mut OutgoingRequest) {}
 
-    async fn on_send_response(&self, request: &mut OutgoingResponse) {}
+    async fn on_send_response(&self, _request: &mut OutgoingResponse) {}
 }
 
 impl_downcast!(Module);

@@ -52,7 +52,7 @@ pub struct Uri {
     /// The maddr parameter.
     pub maddr_param: Option<Host>,
     /// Other parameters.
-    pub params: Option<Params>,
+    pub params: Params,
     /// Optional header parameters
     pub headers: Option<UriHeaders>,
 }
@@ -108,7 +108,7 @@ impl SipUri {
     /// Returns a reference to the contained [`Uri`] value.
     pub fn uri(&self) -> &Uri {
         match self {
-            SipUri::Uri(uri) => &uri,
+            SipUri::Uri(uri) => uri,
             SipUri::NameAddr(name_addr) => &name_addr.uri,
         }
     }
@@ -205,10 +205,10 @@ impl SipUri {
     }
 
     /// Returns the other parameters of the uri.
-    pub fn other_params(&self) -> Option<&Params> {
+    pub fn other_params(&self) -> &Params {
         match self {
-            SipUri::Uri(uri) => uri.params.as_ref(),
-            SipUri::NameAddr(addr) => addr.uri.params.as_ref(),
+            SipUri::Uri(uri) => &uri.params,
+            SipUri::NameAddr(addr) => &addr.uri.params,
         }
     }
 
@@ -297,9 +297,7 @@ impl fmt::Display for Uri {
             write!(f, ";lr")?;
         }
 
-        if let Some(params) = &self.params {
-            write!(f, "{}", params)?;
-        }
+        write!(f, "{}", self.params)?;
 
         if let Some(headers) = &self.headers {
             write!(f, "?{}", headers)?;
@@ -331,73 +329,77 @@ impl UriBuilder {
     }
 
     /// Sets the uri scheme.
-    pub fn scheme(&mut self, scheme: Scheme) -> &mut Self {
+    pub fn scheme(mut self, scheme: Scheme) -> Self {
         self.uri.scheme = scheme;
         self
     }
 
     /// Sets the user part of the uri.
-    pub fn user(&mut self, user: UserInfo) -> &mut Self {
+    pub fn user(mut self, user: UserInfo) -> Self {
         self.uri.user = Some(user);
         self
     }
 
     /// Sets the host of the uri.
-    pub fn host(&mut self, host_port: HostPort) -> &mut Self {
+    pub fn host(mut self, host_port: HostPort) -> Self {
         self.uri.host_port = host_port;
         self
     }
 
     /// Sets the user parameter of the uri.
-    pub fn user_param(&mut self, param: &str) -> &mut Self {
-        self.uri.user_param = Some(param.into());
+    pub fn user_param(mut self, param: String) -> Self {
+        self.uri.user_param = Some(param);
         self
     }
 
     /// Sets the method parameter of the uri.
-    pub fn method_param(&mut self, param: Method) -> &mut Self {
+    pub fn method_param(mut self, param: Method) -> Self {
         self.uri.method_param = Some(param);
         self
     }
 
     /// Sets the transport parameter of the uri.
-    pub fn transport_param(&mut self, param: SipTransportType) -> &mut Self {
+    pub fn transport_param(mut self, param: SipTransportType) -> Self {
         self.uri.transport_param = Some(param);
         self
     }
 
     /// Sets the ttl parameter of the uri.
-    pub fn ttl_param(&mut self, param: &str) -> &mut Self {
-        self.uri.ttl_param = Some(param.parse().unwrap());
+    pub fn ttl_param(mut self, param: u8) -> Self {
+        self.uri.ttl_param = Some(param);
         self
     }
 
     /// Sets the lr parameter of the uri.
-    pub fn lr_param(&mut self, param: bool) -> &mut Self {
+    pub fn lr_param(mut self, param: bool) -> Self {
         self.uri.lr_param = param;
         self
     }
 
     /// Sets the maddr parameter of the uri.
-    pub fn maddr_param(&mut self, param: Host) -> &mut Self {
+    pub fn maddr_param(mut self, param: Host) -> Self {
         self.uri.maddr_param = Some(param);
         self
     }
 
     /// Set generic parameter of the uri.
-    pub fn param(&mut self, name: String, value: Option<String>) -> &mut Self {
-        let params = self.uri.params.get_or_insert_default();
-
-        params.push(Param { name, value });
+    pub fn param(mut self, name: String, value: Option<String>) -> Self {
+        self.uri.params.push(Param { name, value });
 
         self
     }
 
     /// Set header parameter of the uri.
-    pub fn header(&mut self, name: String, value: Option<String>) -> &mut Self {
+    pub fn header(mut self, name: String, value: Option<String>) -> Self {
         let headers = self.uri.headers.get_or_insert_default();
 
         headers.push(Param { name, value });
+
+        self
+    }
+
+    pub fn headers(mut self, headers: UriHeaders) -> Self {
+        self.uri.headers = Some(headers);
 
         self
     }
@@ -534,7 +536,7 @@ impl str::FromStr for HostPort {
     type Err = error::Error;
 
     fn from_str(s: &str) -> error::Result<Self> {
-        let mut p = SipParser::new(s.as_bytes());
+        let mut p = SipParser::new(s);
 
         p.parse_host_port()
     }

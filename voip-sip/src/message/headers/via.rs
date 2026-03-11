@@ -3,21 +3,13 @@ use std::net::IpAddr;
 use std::str::{self, FromStr};
 
 use crate::error::{ParseErrorKind as ErrorKind, Result};
-use crate::macros::parse_param;
-use crate::message::param::Params;
-use crate::message::sip_uri::{DomainName, Host, HostPort};
-use crate::parser::{
-    HeaderParser, SIPV2, SipParser, {self},
-};
+use crate::macros;
+use crate::message::param::{self, Params};
+use crate::message::sip_uri::{Host, HostPort};
+use crate::parser::{HeaderParse, SIPV2, SipParser};
 use crate::transport::SipTransportType;
 
-const MADDR_PARAM: &str = "maddr";
-const BRANCH_PARAM: &str = "branch";
-const TTL_PARAM: &str = "ttl";
-const RPORT_PARAM: &str = "rport";
-const RECEIVED_PARAM: &str = "received";
-
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct Via {
     transport: SipTransportType,
     sent_by: HostPort,
@@ -27,7 +19,7 @@ pub struct Via {
     branch: Option<String>,
     rport: Option<u16>,
     comment: Option<String>,
-    params: Option<Params>,
+    params: Params,
 }
 
 impl Via {
@@ -49,7 +41,7 @@ impl Via {
             branch,
             rport: None,
             comment: None,
-            params: None,
+            params: Default::default(),
         }
     }
 
@@ -66,80 +58,84 @@ impl Via {
     }
 }
 
-impl HeaderParser for Via {
+impl HeaderParse for Via {
     const NAME: &'static str = "Via";
     const SHORT_NAME: &'static str = "v";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
+        let mut via = Self::default();
+
         //@TODO: handle LWS
         parser.parse_sip_version()?;
-        parser.read()?;
+        parser.advance()?;
 
-        let transport = parser.read_token_str();
-        let transport = transport
+        via.transport = parser
+            .read_token()
             .parse()
-            .or_else(|_| parser.parse_error(ErrorKind::Transport))?;
+            .or_else(|_| parser.error(ErrorKind::Transport))?;
 
         parser.skip_ws();
 
-        let sent_by = parser.parse_host_port()?;
-        let mut branch = None;
-        let mut ttl = None;
-        let mut maddr = None;
-        let mut received = None;
-        let mut rport_p: Option<&str> = None;
-        let params = parse_param!(
-            parser,
-            parser::parse_via_param,
-            BRANCH_PARAM = branch,
-            TTL_PARAM = ttl,
-            MADDR_PARAM = maddr,
-            RECEIVED_PARAM = received,
-            RPORT_PARAM = rport_p
-        );
+        via.sent_by = parser.parse_host_port()?;
 
-        // TODO: Return err for invalid received and rport parameter.
-        let received = received.and_then(|r: &str| r.parse().ok());
-        let maddr = maddr.map(|a: &str| match a.parse() {
-            Ok(addr) => Host::IpAddr(addr),
-            Err(_) => Host::DomainName(DomainName::from(a)),
-        });
-        let ttl = ttl.map(|ttl: &str| ttl.parse().unwrap());
-        let branch = branch.map(|b: &str| b.into());
-
-        let rport = if let Some(rport) = rport_p
-            .filter(|rport| !rport.is_empty())
-            .and_then(|rpot| rpot.parse().ok())
-        {
-            if crate::is_valid_port(rport) {
-                Some(rport)
-            } else {
-                return parser.parse_error(ErrorKind::Header);
+        via.params = macros::parse_params!(parser, {
+            let (pname, pvalue) = parser.via_param()?;
+            match pname {
+                param::BRANCH_PARAM => {
+                    via.branch = pvalue.map(ToOwned::to_owned);
+                    None
+                }
+                param::TTL_PARAM => {
+                    via.ttl = pvalue
+                        .map(|p| p.parse())
+                        .transpose()
+                        .or_else(|_| parser.error(ErrorKind::Param))?;
+                    None
+                }
+                param::MADDR_PARAM => {
+                    via.maddr = pvalue
+                        .map(|maddr| maddr.parse())
+                        .transpose()
+                        .or_else(|_| parser.error(ErrorKind::Host))?;
+                    None
+                }
+                param::RECEIVED_PARAM => {
+                    via.received = pvalue
+                        .map(|p| p.parse())
+                        .transpose()
+                        .or_else(|_| parser.error(ErrorKind::Param))?;
+                    None
+                }
+                param::RPORT_PARAM => {
+                    via.rport = if let Some(rport) = pvalue
+                        .filter(|rport| !rport.is_empty())
+                        .map(|rport| rport.parse())
+                        .transpose()
+                        .or_else(|_| parser.error(ErrorKind::Port))?
+                    {
+                        if crate::is_valid_port(rport) {
+                            Some(rport)
+                        } else {
+                            return parser.error(ErrorKind::Port);
+                        }
+                    } else {
+                        None
+                    };
+                    None
+                }
+                _ => Some((pname, pvalue).into()),
             }
+        });
+
+        via.comment = if parser.take_if_eq(b'(').is_some() {
+            let comment = parser.take_until(b')');
+            parser.advance()?;
+            Some(str::from_utf8(comment)?.to_owned())
         } else {
             None
         };
 
-        let comment = if parser.peek() == Some(&b'(') {
-            parser.read()?;
-            let comment = parser.read_until(b')');
-            parser.read()?;
-            Some(str::from_utf8(comment)?.into())
-        } else {
-            None
-        };
-
-        Ok(Via {
-            transport,
-            sent_by,
-            params,
-            comment,
-            ttl,
-            maddr,
-            received,
-            branch,
-            rport,
-        })
+        Ok(via)
     }
 }
 
@@ -177,9 +173,8 @@ impl fmt::Display for Via {
         if let Some(branch) = &self.branch {
             write!(f, ";branch={branch}")?;
         }
-        if let Some(params) = &self.params {
-            write!(f, "{params}")?;
-        }
+        write!(f, "{}", self.params)?;
+
         if let Some(comment) = &self.comment {
             write!(f, " ({comment})")?;
         }

@@ -90,11 +90,8 @@ pub mod parser {
                 assert_eq!($expected.lr_param, uri.lr_param());
                 assert_eq!(&$expected.maddr_param, uri.maddr_param());
 
-                if let Some(params) = uri.other_params() {
-                    assert!($expected.params.is_some(), "missing parameters!");
-                    for param in $expected.params.unwrap().iter() {
-                        assert_eq!(params.param(&param.name), param.value.as_deref());
-                    }
+                for param in $expected.params.iter() {
+                    assert_eq!($expected.params.param(&param.name), param.value.as_deref());
                 }
                 if let Some(headers) = uri.headers() {
                     assert!($expected.headers.is_some(), "missing headers!");

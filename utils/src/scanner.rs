@@ -1,36 +1,8 @@
 //! Text scanning with the `Scanner` type.
 
+use core::{fmt, str};
+
 type Result<T> = std::result::Result<T, ScannerError>;
-
-#[inline(always)]
-pub fn is_space(c: u8) -> bool {
-    matches!(c, b' ' | b'\t')
-}
-
-#[inline(always)]
-pub fn is_newline(c: u8) -> bool {
-    matches!(c, b'\r' | b'\n')
-}
-
-#[inline(always)]
-pub fn is_not_newline(c: u8) -> bool {
-    !is_newline(c)
-}
-
-#[inline(always)]
-pub fn not_comma_or_newline(c: u8) -> bool {
-    !is_newline(c) && c != b','
-}
-
-#[inline(always)]
-pub fn is_alphabetic(c: u8) -> bool {
-    c.is_ascii_alphabetic()
-}
-
-#[inline(always)]
-pub fn is_digit(c: u8) -> bool {
-    c.is_ascii_digit()
-}
 
 /// A text scanner for sequentially reading bytes from an input slice.
 ///
@@ -47,6 +19,48 @@ pub struct Scanner<'buf> {
     len: usize,
 }
 
+/// Represents a position within the scanned input.
+///
+/// Both `line` and `column` are 1-based:
+/// - `line = 1` means the first line of the input.
+/// - `column = 1` means the first byte of the line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    /// Current line number (starting from 1).
+    pub line: usize,
+    /// Current column number (starting from 0).
+    pub column: usize,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, Eq)]
+pub struct ScannerError {
+    pub kind: ScannerErrorKind,
+    pub position: Position,
+}
+
+/// Errors that can occur while reading the buffer.
+#[derive(Debug, PartialEq, Clone, Copy, Eq)]
+pub enum ScannerErrorKind {
+    /// End of the buffer reached unexpectedly.
+    Eof,
+
+    NonNewLine,
+
+    /// The byte read did not match the expected value.
+    UnexpectedByte {
+        /// The byte that was expected.
+        expected: u8,
+        /// The byte that was actually found.
+        found: u8,
+    },
+
+    /// A number could not be parsed from the input.
+    InvalidNumber,
+
+    /// The bytes are not valid UTF-8.
+    InvalidUtf8(str::Utf8Error),
+}
+
 impl<'buf> Scanner<'buf> {
     /// Create a `Scanner` from a byte slice.
     pub const fn new(buffer: &'buf [u8]) -> Self {
@@ -58,6 +72,15 @@ impl<'buf> Scanner<'buf> {
         }
     }
 
+    pub fn next_byte(&mut self) -> Result<u8> {
+        self.scan()
+            .ok_or_else(|| self.scan_error(ScannerErrorKind::Eof))
+    }
+
+    pub fn is_eof(&self) -> bool {
+        self.index == self.len
+    }
+
     /// Returns a slice of the remaining bytes in the scanner.
     #[inline]
     pub fn remaining(&self) -> &[u8] {
@@ -67,9 +90,9 @@ impl<'buf> Scanner<'buf> {
     /// Advances the scanner by `n` bytes.
     ///
     /// Stops early if the end of the buffer is reached.
-    pub fn advance_by(&mut self, n: usize) {
+    pub fn advance_n(&mut self, n: usize) {
         for _ in 0..n {
-            if self.read().is_none() {
+            if self.scan().is_none() {
                 break;
             }
         }
@@ -78,19 +101,10 @@ impl<'buf> Scanner<'buf> {
     /// Reads the next byte and advance the scanner position.
     ///
     /// If the scanner has reached the end of the buffer, it returns `None`.
-    pub fn read(&mut self) -> Option<u8> {
-        self.peek().copied().map(|c| {
+    pub fn scan(&mut self) -> Option<u8> {
+        self.peek().copied().inspect(|&c| {
             self.bump(c);
-            return c;
         })
-    }
-
-    pub fn next(&mut self) -> Result<u8> {
-        self.read().ok_or(ScannerError::Eof)
-    }
-
-    pub fn is_eof(&self) -> bool {
-        self.index == self.len
     }
 
     /// Returns a reference to the next byte without advancing the scanner
@@ -104,8 +118,8 @@ impl<'buf> Scanner<'buf> {
 
     /// Get a reference to the current scanner [`Position`].
     #[inline]
-    pub fn position(&self) -> &Position {
-        &self.position
+    pub fn position(&self) -> Position {
+        self.position
     }
 
     /// Returns `true` if the upcoming bytes match the given `prefix`.
@@ -122,66 +136,60 @@ impl<'buf> Scanner<'buf> {
         self.remaining().get(..n)
     }
 
-    fn read_number_str(&mut self, decimal_point: bool) -> &'buf str {
-        let bytes = self.read_while(|b| b.is_ascii_digit() || (decimal_point && b == b'.'));
-        // SAFETY: `bytes` contains only ASCII digits (0–9) and optionally '.'
-        unsafe { std::str::from_utf8_unchecked(bytes) }
-    }
-
     /// Reads a `u32` number until a non-digit is found.
     ///
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
-    pub fn read_u32(&mut self) -> Result<u32> {
-        self.read_number_str(false)
+    pub fn scan_u32(&mut self) -> Result<u32> {
+        self.scan_number_str(false)
             .parse()
-            .or_else(|_| Err(ScannerError::InvalidNumber))
+            .map_err(|_| self.scan_error(ScannerErrorKind::InvalidNumber))
     }
 
     /// Read a `u16` number until an invalid digit is found.
     ///
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
-    pub fn read_u16(&mut self) -> Result<u16> {
-        self.read_number_str(false)
+    pub fn scan_u16(&mut self) -> Result<u16> {
+        self.scan_number_str(false)
             .parse()
-            .or_else(|_| Err(ScannerError::InvalidNumber))
+            .map_err(|_| self.scan_error(ScannerErrorKind::InvalidNumber))
     }
 
     /// Read a `u64` number until an invalid digit is found.
     ///
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
-    pub fn read_u64(&mut self) -> Result<u64> {
-        self.read_number_str(false)
+    pub fn scan_u64(&mut self) -> Result<u64> {
+        self.scan_number_str(false)
             .parse()
-            .or_else(|_| Err(ScannerError::InvalidNumber))
+            .map_err(|_| self.scan_error(ScannerErrorKind::InvalidNumber))
     }
 
     /// Read a `i64` number until an invalid digit is found.
     ///
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
-    pub fn read_i64(&mut self) -> Result<i64> {
-        self.read_number_str(false)
+    pub fn scan_i64(&mut self) -> Result<i64> {
+        self.scan_number_str(false)
             .parse()
-            .or_else(|_| Err(ScannerError::InvalidNumber))
+            .map_err(|_| self.scan_error(ScannerErrorKind::InvalidNumber))
     }
 
     /// Read a `f32` number until an invalid digit is found.
     ///
     /// Returns an error if no valid digits were found or if the number is out
     /// of range.
-    pub fn read_f32(&mut self) -> Result<f32> {
-        self.read_number_str(true)
+    pub fn scan_f32(&mut self) -> Result<f32> {
+        self.scan_number_str(true)
             .parse()
-            .or_else(|_| Err(ScannerError::InvalidNumber))
+            .map_err(|_| self.scan_error(ScannerErrorKind::InvalidNumber))
     }
 
     /// Call the `predicate` closure for each element in the buffer and read
     /// the scanner while the closure returns `true`.
     #[inline(always)]
-    pub fn read_while(&mut self, predicate: impl Fn(u8) -> bool) -> &'buf [u8] {
+    pub fn scan_while(&mut self, predicate: impl Fn(u8) -> bool) -> &'buf [u8] {
         let start = self.index;
         while let Some(&c) = self.peek() {
             if predicate(c) {
@@ -217,12 +225,11 @@ impl<'buf> Scanner<'buf> {
     }
 
     /// Read next bytes if equals to `expected`
-    pub fn must_read_bytes(&mut self, expected: &[u8]) -> Result<()> {
+    pub fn must_scan_slice(&mut self, expected: &[u8]) -> Result<()> {
         let remaining = &self.buffer[self.index..];
-        let iter = remaining.iter().zip(expected);
-        for (&found, &expected) in iter {
+        for (&found, &expected) in remaining.iter().zip(expected) {
             if found != expected {
-                return Err(ScannerError::UnexpectedByte { expected, found });
+                return Err(self.scan_error(ScannerErrorKind::UnexpectedByte { expected, found }));
             }
             self.bump(found);
         }
@@ -241,8 +248,10 @@ impl<'buf> Scanner<'buf> {
                 self.bump(found);
                 Ok(())
             }
-            Some(found) => Err(ScannerError::UnexpectedByte { expected, found }),
-            None => Err(ScannerError::Eof),
+            Some(found) => {
+                Err(self.scan_error(ScannerErrorKind::UnexpectedByte { expected, found }))
+            }
+            None => Err(self.scan_error(ScannerErrorKind::Eof)),
         }
     }
 
@@ -250,17 +259,37 @@ impl<'buf> Scanner<'buf> {
     ///
     /// The matching byte is not consumed.
     #[inline]
-    pub fn read_until(&mut self, byte: u8) -> &'buf [u8] {
-        self.read_while(|b| b != byte)
+    pub fn scan_until(&mut self, byte: u8) -> &'buf [u8] {
+        self.scan_while(|b| b != byte)
     }
 
     #[inline]
-    pub fn read_until_as_str(&mut self, byte: u8) -> Result<&'buf str> {
-        self.read_while_as_str(|b| b != byte)
+    pub fn scan_until_as_str(&mut self, byte: u8) -> Result<&'buf str> {
+        self.scan_while_as_str(|b| b != byte)
     }
 
-    pub fn read_until_any_as_str(&mut self, slice: &[u8]) -> Result<&'buf str> {
-        self.read_while_as_str(|b| !slice.contains(&b))
+    pub fn scan_until_any_as_str(&mut self, slice: &[u8]) -> Result<&'buf str> {
+        self.scan_while_as_str(|b| !slice.contains(&b))
+    }
+
+    pub fn scan_newline(&mut self) -> Result<()> {
+        let newline = self.scan_while(crate::byte::is_newline);
+        if newline.is_empty() {
+            return Err(self.scan_error(ScannerErrorKind::NonNewLine));
+        }
+        Ok(())
+    }
+
+    /// Scan until a new line (`\r` or `\n`) is found.
+    pub fn scan_line(&mut self) -> Result<&'buf str> {
+        self.scan_while_as_str(|b| !crate::byte::is_newline(b))
+    }
+
+    pub(crate) fn scan_error(&self, kind: ScannerErrorKind) -> ScannerError {
+        ScannerError {
+            kind,
+            position: self.position,
+        }
     }
 
     /// Reads bytes while `predicate` returns true and converts them to a string
@@ -270,13 +299,14 @@ impl<'buf> Scanner<'buf> {
     ///
     /// Returns `ScannerError::InvalidUtf8` if the resulting bytes are not
     /// valid UTF-8.
-    pub fn read_while_as_str(&mut self, predicate: impl Fn(u8) -> bool) -> Result<&'buf str> {
-        let bytes = self.read_while(predicate);
+    pub fn scan_while_as_str(&mut self, predicate: impl Fn(u8) -> bool) -> Result<&'buf str> {
+        let bytes = self.scan_while(predicate);
 
-        std::str::from_utf8(bytes).or_else(|_| Err(ScannerError::InvalidUtf8))
+        std::str::from_utf8(bytes)
+            .map_err(|err| self.scan_error(ScannerErrorKind::InvalidUtf8(err)))
     }
 
-    /// Same as [`Scanner::read_while`] but returns the bytes as a string slice
+    /// Same as [`Scanner::scan_while`] but returns the bytes as a string slice
     /// without checking UTF-8.
     ///
     /// # Safety
@@ -284,11 +314,11 @@ impl<'buf> Scanner<'buf> {
     /// The caller must ensure that `predicate` only returns `true` for bytes that form valid
     /// UTF-8.
     #[inline]
-    pub unsafe fn read_while_as_str_unchecked(
+    pub unsafe fn scan_while_as_str_unchecked(
         &mut self,
         predicate: impl Fn(u8) -> bool,
     ) -> &'buf str {
-        let bytes = self.read_while(predicate);
+        let bytes = self.scan_while(predicate);
 
         // SAFETY: The caller guarantees that `predicate` only matches bytes forming valid
         // UTF-8.
@@ -302,25 +332,31 @@ impl<'buf> Scanner<'buf> {
     ///
     /// The byte readed.
     #[inline(always)]
-    pub fn read_byte_if(&mut self, predicate: impl FnOnce(u8) -> bool) -> Option<u8> {
-        match self.peek() {
-            Some(&matched) if predicate(matched) => {
-                self.bump(matched);
+    pub fn scan_if(&mut self, predicate: impl FnOnce(u8) -> bool) -> Option<u8> {
+        match self.peek().copied() {
+            Some(byte) if predicate(byte) => {
+                self.bump(byte);
 
-                Some(matched)
+                Some(byte)
             }
             _ => None,
         }
     }
 
     /// Consume and return the next byte if it is equal to `expected`.
-    pub fn read_if_eq(&mut self, expected: u8) -> Option<u8> {
-        self.read_byte_if(|b| b == expected)
+    pub fn scan_if_eq(&mut self, expected: u8) -> Option<u8> {
+        self.scan_if(|b| b == expected)
+    }
+
+    fn scan_number_str(&mut self, decimal_point: bool) -> &'buf str {
+        let bytes = self.scan_while(|b| b.is_ascii_digit() || (decimal_point && b == b'.'));
+        unsafe { std::str::from_utf8_unchecked(bytes) }
     }
 
     #[inline(always)]
     fn bump(&mut self, byte: u8) {
         self.index += 1;
+
         if byte == b'\n' {
             self.position.column = 1;
             self.position.line += 1;
@@ -333,50 +369,16 @@ impl<'buf> Scanner<'buf> {
 impl AsRef<[u8]> for Scanner<'_> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        // SAFETY: `self.index..self.len` is guaranteed to be within the bounds of
-        // `self.buffer`.
         unsafe { self.buffer.get_unchecked(self.index..self.len) }
     }
 }
 
-impl ToString for Scanner<'_> {
-    fn to_string(&self) -> String {
-        String::from_utf8_lossy(self.remaining()).into()
+impl fmt::Display for Scanner<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let to_print = String::from_utf8_lossy(self.remaining());
+        write!(f, "{to_print}")?;
+        Ok(())
     }
-}
-
-/// Errors that can occur while reading the buffer.
-#[derive(Debug, PartialEq, Clone, Copy, Eq)]
-pub enum ScannerError {
-    /// End of the buffer reached unexpectedly.
-    Eof,
-
-    /// The byte read did not match the expected value.
-    UnexpectedByte {
-        /// The byte that was expected.
-        expected: u8,
-        /// The byte that was actually found.
-        found: u8,
-    },
-
-    /// A number could not be parsed from the input.
-    InvalidNumber,
-
-    /// The bytes are not valid UTF-8.
-    InvalidUtf8,
-}
-
-/// Represents a position within the scanned input.
-///
-/// Both `line` and `column` are 1-based:
-/// - `line = 1` means the first line of the input.
-/// - `column = 1` means the first byte of the line.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Position {
-    /// Current line number (starting from 1).
-    pub line: usize,
-    /// Current column number (starting from 0).
-    pub column: usize,
 }
 
 impl Position {
@@ -397,38 +399,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_must_read_expected_byte_succeeds() {
+    fn test_must_scan_expected_byte_succeeds() {
         let mut scanner = Scanner::new(b"Hello, World!");
         let result = scanner.must_read(b'H');
         assert_eq!(result, Ok(()));
     }
 
     #[test]
-    fn test_must_read_fails_on_eof() {
+    fn test_must_scan_fails_on_eof() {
         let mut scanner = Scanner::new(b"");
         let err = scanner.must_read(b'h').unwrap_err();
-        assert_eq!(err, ScannerError::Eof);
+        assert_eq!(err.kind, ScannerErrorKind::Eof);
     }
 
     #[test]
-    fn test_read_while_digits_should_return_only_digits() {
+    fn test_scan_while_digits_should_return_only_digits() {
         let mut scanner = Scanner::new(b"123hello");
-        let digits = scanner.read_while(|b| b.is_ascii_digit());
+        let digits = scanner.scan_while(|b| b.is_ascii_digit());
         assert_eq!(digits, b"123");
     }
 
     #[test]
-    fn read_while_as_str_should_return_only_alphabetic() {
+    fn scan_while_as_str_should_return_only_alphabetic() {
         let mut scanner = Scanner::new(b"hello123");
-        let string = scanner.read_while_as_str(|b| b.is_ascii_alphabetic());
+        let string = scanner.scan_while_as_str(|b| b.is_ascii_alphabetic());
         assert_eq!(string, Ok("hello"));
     }
 
     #[test]
-    fn read_while_as_str_fails_on_invalid_utf8() {
+    fn scan_while_as_str_fails_on_invalid_utf8() {
         let mut scanner = Scanner::new(&[0xff, 0xff]);
-        let err = scanner.read_while_as_str(|_| true).unwrap_err();
-        assert_eq!(err, ScannerError::InvalidUtf8);
+        let err = scanner.scan_while_as_str(|_| true).unwrap_err();
+        assert_matches::assert_matches!(err.kind, ScannerErrorKind::InvalidUtf8(_));
     }
 
     #[test]
@@ -440,37 +442,37 @@ mod tests {
     }
 
     #[test]
-    fn test_read_u32_valid_number_returns_value() {
+    fn test_scan_u32_valid_number_returns_value() {
         let mut scanner = Scanner::new(b"12345hello");
-        let result = scanner.read_u32();
+        let result = scanner.scan_u32();
         assert_eq!(result, Ok(12345u32));
     }
 
     #[test]
-    fn test_read_u32_invalid_number_returns_error() {
+    fn test_scan_u32_invalid_number_returns_error() {
         let mut scanner = Scanner::new(b"hello");
-        let err = scanner.read_u32().unwrap_err();
-        assert_eq!(err, ScannerError::InvalidNumber);
+        let err = scanner.scan_u32().unwrap_err();
+        assert_eq!(err.kind, ScannerErrorKind::InvalidNumber);
     }
 
     #[test]
-    fn test_read_u16_valid_number_returns_value() {
+    fn test_scan_u16_valid_number_returns_value() {
         let mut scanner = Scanner::new(b"65535xyz");
-        let result = scanner.read_u16();
+        let result = scanner.scan_u16();
         assert_eq!(result, Ok(65535u16));
     }
 
     #[test]
-    fn test_read_f32_valid_number_returns_value() {
+    fn test_scan_f32_valid_number_returns_value() {
         let mut scanner = Scanner::new(b"3.1415hello");
-        let result = scanner.read_f32();
+        let result = scanner.scan_f32();
         assert_eq!(result, Ok(3.1415f32));
     }
 
     #[test]
-    fn test_read_f32_invalid_number_returns_error() {
+    fn test_scan_f32_invalid_number_returns_error() {
         let mut scanner = Scanner::new(b"hello");
-        let err = scanner.read_f32().unwrap_err();
-        assert_eq!(err, ScannerError::InvalidNumber);
+        let err = scanner.scan_f32().unwrap_err();
+        assert_eq!(err.kind, ScannerErrorKind::InvalidNumber);
     }
 }

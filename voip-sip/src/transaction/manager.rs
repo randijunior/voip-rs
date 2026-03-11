@@ -61,7 +61,7 @@ impl endpoint::Module for TsxModule {
             .unwrap();
     }
 
-    async fn on_receive_response(&self, mut response: ReceivedResponse<'_>, _: &Endpoint) {
+    async fn on_receive_response(&self, mut response: ReceivedResponse<'_>, _endpoint: &Endpoint) {
         let key = TransactionKey::from_response(&response);
 
         let Some(channel) = self.get_entry(&key) else {
@@ -92,10 +92,10 @@ impl TransactionKey {
     fn from_incoming_info(info: &IncomingInfo, role: Role) -> Self {
         match info.mandatory_headers.via.branch() {
             Some(branch) if branch.starts_with(RFC3261_BRANCH_ID) => {
-                let branch = branch.clone();
+                let branch = branch.to_owned();
                 let method = info.mandatory_headers.cseq.method();
 
-                Self::new_key_3261(role, method, branch.to_owned())
+                Self::new_key_3261(role, method, branch)
             }
             _ => {
                 todo!("create rfc 2543")

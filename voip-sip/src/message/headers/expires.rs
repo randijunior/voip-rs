@@ -1,17 +1,17 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(transparent)]
 pub struct Expires(u32);
 
-impl HeaderParser for Expires {
+impl HeaderParse for Expires {
     const NAME: &'static str = "Expires";
 
     fn parse(parser: &mut SipParser) -> Result<Expires> {
-        let expires = parser.read_u32()?;
+        let expires = parser.parse_u32()?;
 
         Ok(Self(expires))
     }

@@ -4,18 +4,19 @@ use std::str;
 use itertools::Itertools;
 
 use crate::error::Result;
-use crate::macros::parse_comma_separated_header_value;
-use crate::parser::{HeaderParser, SipParser};
+use crate::macros;
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct ContentEncoding(Vec<String>);
 
-impl HeaderParser for ContentEncoding {
+impl HeaderParse for ContentEncoding {
     const NAME: &'static str = "Content-Encoding";
     const SHORT_NAME: &'static str = "e";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let codings = parse_comma_separated_header_value!(parser => parser.parse_token()?.into());
+        let codings =
+            macros::collect_elems_separated_by_comma!(parser, { parser.token()?.to_owned() });
 
         Ok(Self(codings))
     }

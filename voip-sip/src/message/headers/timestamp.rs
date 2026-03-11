@@ -1,7 +1,7 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Timestamp {
@@ -9,15 +9,15 @@ pub struct Timestamp {
     delay: Option<f32>,
 }
 
-impl HeaderParser for Timestamp {
+impl HeaderParse for Timestamp {
     const NAME: &'static str = "Timestamp";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let time = parser.read_f32()?;
+        let time = parser.parse_f32()?;
         parser.skip_ws();
 
         let delay = if parser.peek().is_some_and(|b| b.is_ascii_digit()) {
-            Some(parser.read_f32()?)
+            Some(parser.parse_f32()?)
         } else {
             None
         };

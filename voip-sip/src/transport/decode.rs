@@ -5,7 +5,7 @@ use tokio_util::bytes::Buf;
 use tokio_util::codec::Decoder;
 
 use crate::message::headers::ContentLength;
-use crate::parser::HeaderParser;
+use crate::parser::HeaderParse;
 use crate::transport::{KEEPALIVE_REQUEST, KEEPALIVE_RESPONSE, MSG_HEADERS_END};
 
 pub struct StreamingDecoder {}
@@ -55,7 +55,9 @@ impl Decoder for StreamingDecoder {
                 continue;
             };
 
-            if ContentLength::matches_name(name) {
+            if name.eq_ignore_ascii_case(ContentLength::NAME.as_bytes())
+                || name.eq_ignore_ascii_case(ContentLength::SHORT_NAME.as_bytes())
+            {
                 let Some(value) = split.next() else {
                     continue;
                 };
@@ -78,7 +80,7 @@ impl Decoder for StreamingDecoder {
                 return Ok(None);
             }
             let src_bytes = src.split_to(expected_msg_size);
-            let completed_bytes = src_bytes.freeze().into();
+            let completed_bytes = src_bytes.freeze();
 
             Ok(Some(FramedMessage::Complete(completed_bytes)))
         } else {

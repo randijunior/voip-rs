@@ -1,12 +1,12 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Subject(String);
 
-impl HeaderParser for Subject {
+impl HeaderParse for Subject {
     const NAME: &'static str = "Subject";
     const SHORT_NAME: &'static str = "s";
 

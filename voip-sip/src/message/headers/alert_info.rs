@@ -1,28 +1,28 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::macros::parse_header_param;
+use crate::macros;
 use crate::message::param::Params;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct AlertInfo {
     url: String,
-    params: Option<Params>,
+    params: Params,
 }
 
-impl HeaderParser for AlertInfo {
+impl HeaderParse for AlertInfo {
     const NAME: &'static str = "Alert-Info";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
         parser.skip_ws();
-
-        parser.read()?;
-        let url = parser.read_until(b'>');
-        parser.read()?;
+        parser.must_read(b'<')?;
+        let url = parser.take_until(b'>');
+        parser.advance()?;
 
         let url = str::from_utf8(url)?.to_owned();
-        let params = parse_header_param!(parser);
+
+        let params = macros::parse_params!(parser);
 
         Ok(AlertInfo { url, params })
     }
@@ -31,9 +31,7 @@ impl HeaderParser for AlertInfo {
 impl fmt::Display for AlertInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: <{}>", Self::NAME, self.url)?;
-        if let Some(params) = &self.params {
-            write!(f, "{}", params)?;
-        }
+        write!(f, "{}", self.params)?;
         Ok(())
     }
 }

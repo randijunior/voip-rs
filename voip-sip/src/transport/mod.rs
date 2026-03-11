@@ -366,9 +366,10 @@ impl TransportModule {
 }
 
 /// Represents the type of transport.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SipTransportType {
     /// Udp.
+    #[default]
     Udp,
     /// Tcp.
     Tcp,
@@ -585,11 +586,10 @@ impl TransportMessage {
 }
 
 fn is_same_ip_family(first: &IpAddr, second: &IpAddr) -> bool {
-    match (first, second) {
-        (IpAddr::V4(_), IpAddr::V4(_)) => true,
-        (IpAddr::V6(_), IpAddr::V6(_)) => true,
-        _ => false,
-    }
+    matches!(
+        (first, second),
+        (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_))
+    )
 }
 
 #[cfg(test)]

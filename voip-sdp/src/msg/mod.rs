@@ -99,7 +99,7 @@ impl SessionDescription {
             timing.repeat_times.push(time);
             Ok(())
         } else {
-            return Err(Error::SdpTimeDescriptionNotFound);
+            Err(Error::SdpTimeDescriptionNotFound)
         }
     }
     pub fn set_phone(&mut self, phone: PhoneNumber) {

@@ -27,7 +27,7 @@ rand = "0.9.2"
 rustc-hash = "2.1.1"
 
 [dev-dependencies]
-assert_matches = "1.5"
+assert_matches.workspace = true
 criterion = "0.5"
 test-log = "0.2.18"
 

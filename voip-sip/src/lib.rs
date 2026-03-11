@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-//! # voip
+//! # voip-sip
 //!
 //! A rust library that implements the SIP protocol.
 //!
@@ -7,9 +7,9 @@
 pub mod dialog;
 pub mod endpoint;
 pub mod message;
-pub mod parser;
+pub(crate) mod parser;
 pub mod transaction;
-pub mod transport;
+pub(crate) mod transport;
 
 pub(crate) mod error;
 
@@ -19,7 +19,6 @@ pub use endpoint::Endpoint;
 use error::Error;
 pub use error::Result;
 use parser::SipParser;
-pub use utils::ToTake;
 
 #[cfg(test)]
 #[macro_use]
@@ -143,18 +142,7 @@ pub struct MimeType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaType {
     pub mimetype: MimeType,
-    pub param: Option<Params>,
-}
-
-impl fmt::Display for MediaType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let MediaType { mimetype, param } = self;
-        write!(f, "{}/{}", mimetype.mtype, mimetype.subtype)?;
-        if let Some(param) = &param {
-            write!(f, ";{}", param)?;
-        }
-        Ok(())
-    }
+    pub params: Params,
 }
 
 impl MediaType {
@@ -162,15 +150,15 @@ impl MediaType {
     pub fn new(mtype: String, subtype: String) -> Self {
         Self {
             mimetype: MimeType { mtype, subtype },
-            param: None,
+            params: Default::default(),
         }
     }
 
     pub fn parse(parser: &mut SipParser) -> Result<Self> {
-        let mtype = parser.parse_token()?;
-        parser.read();
-        let subtype = parser.parse_token()?;
-        let param = crate::macros::parse_header_param!(parser);
+        let mtype = parser.token()?;
+        parser.advance()?;
+        let subtype = parser.token()?;
+        let param = macros::parse_params!(parser);
 
         Ok(Self::from_parts(mtype, subtype, param))
     }
@@ -181,14 +169,23 @@ impl MediaType {
 
     /// Constructs a `MediaType` with an optional
     /// parameters.
-    pub fn from_parts(mtype: &str, subtype: &str, param: Option<Params>) -> Self {
+    pub fn from_parts(mtype: &str, subtype: &str, params: Params) -> Self {
         Self {
             mimetype: MimeType {
                 mtype: mtype.into(),
                 subtype: subtype.into(),
             },
-            param,
+            params,
         }
+    }
+}
+
+impl fmt::Display for MediaType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let MediaType { mimetype, params } = self;
+        write!(f, "{}/{}", mimetype.mtype, mimetype.subtype)?;
+        write!(f, "{}", params)?;
+        Ok(())
     }
 }
 

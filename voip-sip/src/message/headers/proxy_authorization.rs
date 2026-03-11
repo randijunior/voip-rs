@@ -1,13 +1,13 @@
 use std::fmt;
 
 use crate::error::Result;
-use crate::message::auth::Credential;
-use crate::parser::{HeaderParser, SipParser};
+use crate::message::sip_auth::Credential;
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ProxyAuthorization(Credential);
 
-impl HeaderParser for ProxyAuthorization {
+impl HeaderParse for ProxyAuthorization {
     const NAME: &'static str = "Proxy-Authorization";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {

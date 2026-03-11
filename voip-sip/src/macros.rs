@@ -1,81 +1,34 @@
-macro_rules! parse_header_param {
-    ($scanner:ident) => (
-        $crate::macros::parse_param!(
-            $scanner,
-            $crate::parser::SipParser::parse_param_ref,
-        )
-    );
+macro_rules! parse_params {
+    ($parser:expr) => {
+        $crate::macros::parse_params!($parser, { Some($parser.parse_param()?) })
+    };
 
-    ($scanner:ident, $($name:ident = $var:expr),*) => (
-        $crate::macros::parse_param!(
-            $scanner,
-            $crate::parser::SipParser::parse_param_ref,
-            $($name = $var),*
-        )
-    );
-}
-
-macro_rules! parse_param {
-    (
-        $scanner:ident,
-        $func:expr,
-        $($name:ident = $var:expr),*
-    ) =>  {{
-        $scanner.skip_ws();
-        match $scanner.peek() {
-            Some(b';') => {
-                let mut params = $crate::message::param::Params::default();
-                while let Some(b';') = $scanner.peek() {
-                        // take ';' character
-                        let _ = $scanner.read();
-                        let param = $func($scanner)?;
-                        $(
-                            if param.0 == $name {
-                                $var = param.1.map(|p| p.into());
-                                $scanner.skip_ws();
-                                continue;
-                            }
-                        )*
-                        params.push(param.into());
-                        $scanner.skip_ws();
-                    }
-                    if params.is_empty() {
-                        None
-                    } else {
-                        Some(params)
-                    }
-                },
-                _ => {
-                    None
-                }
+    ($parser:expr, $func:block) => {{
+        let mut params = $crate::message::param::Params::default();
+        $parser.skip_ws();
+        while $parser.take_if_eq(b';').is_some() {
+            if let Some(param) = $func {
+                params.push(param);
             }
-        }};
-    }
-
-macro_rules! parse_comma_separated_header_value {
-    ($parser:ident => $body:expr) => {{
-        if $parser.is_next_newline() {
-            Vec::new()
-        } else {
-            let mut hdr_itens = Vec::with_capacity(1);
-            $crate::macros::comma_separated!($parser => {
-                hdr_itens.push($body);
-            });
-            hdr_itens
+            $parser.skip_ws();
         }
+        params
     }};
 }
 
-macro_rules! comma_separated {
-    ($parser:ident => $body:expr) => {{
-        $parser.skip_ws();
-        $body
-
-        while let Some(b',') = $parser.peek() {
-            $parser.read()?;
+macro_rules! collect_elems_separated_by_comma {
+    ($parser:expr, $func:block) => {{
+        let mut itens = Vec::with_capacity(1);
+        loop {
             $parser.skip_ws();
-            $body
+
+            itens.push($func);
+
+            if $parser.take_if_eq(b',').is_none() {
+                break;
+            }
         }
+        itens
     }};
 }
 
@@ -89,19 +42,9 @@ macro_rules! headers {
     );
 }
 
-macro_rules! try_parse_hdr {
-    ($header:ident, $scanner:ident) => {{
-        let Ok(header) = $header::parse($scanner) else {
-            let position = *$scanner.position();
-            return Err(ParseError::new($crate::error::ParseErrorKind::Header, position).into());
-        };
-        header
-    }};
-}
-
 #[macro_export]
 macro_rules! filter_map_header {
-    ($hdrs:expr, $header:ident) => {
+    ($hdrs:expr, $header:ty) => {
         $hdrs.iter().filter_map(|hdr| {
             if let $crate::message::headers::Header::$header(v) = hdr {
                 Some(v)
@@ -138,8 +81,5 @@ macro_rules! find_map_mut_header {
     };
 }
 
-pub(crate) use {
-    comma_separated, parse_comma_separated_header_value, parse_header_param, parse_param,
-    try_parse_hdr,
-};
+pub(crate) use {collect_elems_separated_by_comma, parse_params};
 pub use {filter_map_header, find_map_header, find_map_mut_header, headers};

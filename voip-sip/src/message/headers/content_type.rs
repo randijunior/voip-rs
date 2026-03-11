@@ -3,10 +3,21 @@ use std::str;
 
 use crate::MediaType;
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ContentType(MediaType);
+
+impl HeaderParse for ContentType {
+    const NAME: &'static str = "Content-Type";
+    const SHORT_NAME: &'static str = "c";
+
+    fn parse(parser: &mut SipParser) -> Result<Self> {
+        let media_type = MediaType::parse(parser)?;
+
+        Ok(Self(media_type))
+    }
+}
 
 impl ContentType {
     pub fn new_sdp() -> Self {
@@ -15,19 +26,8 @@ impl ContentType {
                 mtype: "application".into(),
                 subtype: "sdp".into(),
             },
-            param: None,
+            params: Default::default(),
         })
-    }
-}
-
-impl HeaderParser for ContentType {
-    const NAME: &'static str = "Content-Type";
-    const SHORT_NAME: &'static str = "c";
-
-    fn parse(parser: &mut SipParser) -> Result<Self> {
-        let media_type = MediaType::parse(parser)?;
-
-        Ok(Self(media_type))
     }
 }
 

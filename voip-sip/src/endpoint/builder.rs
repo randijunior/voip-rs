@@ -1,5 +1,6 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
+use std::{io, mem};
 
 use utils::DnsResolver;
 
@@ -13,83 +14,6 @@ use crate::transport::ws::WebSocketListener;
 use crate::transport::{SipTransport, Transport, TransportModule};
 use crate::{Endpoint, MediaType, Result};
 
-#[derive(Default)]
-pub struct EndpointTransports {
-    udp_addrs: Vec<SocketAddr>,
-    tcp_addrs: Vec<SocketAddr>,
-    ws_addrs: Vec<SocketAddr>,
-}
-
-impl EndpointTransports {
-    async fn bind_udp(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
-        let udp = UdpTransport::bind(addr).await?;
-        log::info!("SIP UDP transport started, bound to: {}", udp.local_addr());
-        endpoint
-            .transports()
-            .register_transport(Transport::new(udp.clone()));
-        tokio::spawn(udp.receive_datagram(endpoint));
-        Ok(())
-    }
-
-    async fn bind_tcp(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
-        let tcp = TcpListener::bind(addr).await?;
-        log::info!(
-            "SIP TCP listener ready for incoming connections at: {}",
-            tcp.local_addr()
-        );
-        tokio::spawn(tcp.accept_clients(endpoint));
-        Ok(())
-    }
-
-    async fn bind_ws(&self, addr: SocketAddr, endpoint: Endpoint) -> Result<()> {
-        let ws = WebSocketListener::bind(addr).await?;
-        log::info!(
-            "SIP WS listener ready for incoming connections at: {}",
-            ws.local_addr()
-        );
-        tokio::spawn(ws.accept_clients(endpoint));
-        Ok(())
-    }
-
-    pub fn add_udp<A: ToSocketAddrs>(&mut self, addr: A) -> crate::Result<()> {
-        let addrs = addr.to_socket_addrs()?;
-        for addr in addrs {
-            self.udp_addrs.push(addr);
-        }
-
-        Ok(())
-    }
-    pub fn add_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> crate::Result<()> {
-        let addrs = addr.to_socket_addrs()?;
-        for addr in addrs {
-            self.tcp_addrs.push(addr);
-        }
-
-        Ok(())
-    }
-    pub fn add_ws<A: ToSocketAddrs>(&mut self, addr: A) -> crate::Result<()> {
-        let addrs = addr.to_socket_addrs()?;
-        for addr in addrs {
-            self.ws_addrs.push(addr);
-        }
-
-        Ok(())
-    }
-
-    pub async fn bind(mut self, endpoint: Endpoint) -> crate::Result<()> {
-        while let Some(addr) = self.udp_addrs.pop() {
-            self.bind_udp(addr, endpoint.clone()).await?;
-        }
-        while let Some(addr) = self.tcp_addrs.pop() {
-            self.bind_tcp(addr, endpoint.clone()).await?;
-        }
-        while let Some(addr) = self.ws_addrs.pop() {
-            self.bind_ws(addr, endpoint.clone()).await?;
-        }
-        Ok(())
-    }
-}
-
 /// Builder for creating a new SIP `Endpoint`.
 pub struct EndpointBuilder {
     name: String,
@@ -98,7 +22,22 @@ pub struct EndpointBuilder {
     allow: Allow,
     accept: Accept,
     supported: Supported,
-    transports: EndpointTransports,
+    tcp: Vec<Box<dyn AddressResolver>>,
+    udp: Vec<Box<dyn AddressResolver>>,
+    ws: Vec<Box<dyn AddressResolver>>,
+}
+
+pub trait AddressResolver: Send + Sync {
+    fn resolve(&self) -> io::Result<Vec<SocketAddr>>;
+}
+
+impl<T> AddressResolver for T
+where
+    T: ToSocketAddrs + Clone + Send + Sync + 'static,
+{
+    fn resolve(&self) -> io::Result<Vec<SocketAddr>> {
+        self.to_socket_addrs().map(|iter| iter.collect())
+    }
 }
 
 impl EndpointBuilder {
@@ -110,41 +49,59 @@ impl EndpointBuilder {
             accept: Accept::default(),
             allow: Allow::default(),
             supported: Supported::default(),
-            transports: EndpointTransports::default(),
+            tcp: Default::default(),
+            udp: Default::default(),
+            ws: Default::default(),
         }
     }
 
-    pub fn name(&mut self, name: String) -> &mut EndpointBuilder {
+    pub fn with_tcp_addr<A>(mut self, addr: A) -> EndpointBuilder
+    where
+        A: AddressResolver + 'static,
+    {
+        self.tcp.push(Box::new(addr));
+
+        self
+    }
+
+    pub fn with_udp_addr<A>(mut self, addr: A) -> EndpointBuilder
+    where
+        A: AddressResolver + 'static,
+    {
+        self.udp.push(Box::new(addr));
+        self
+    }
+
+    pub fn with_ws_addr<A>(mut self, addr: A) -> EndpointBuilder
+    where
+        A: AddressResolver + 'static,
+    {
+        self.ws.push(Box::new(addr));
+        self
+    }
+
+    pub fn with_name(mut self, name: String) -> EndpointBuilder {
         self.name = name;
 
         self
     }
 
-    pub fn module<M: Module>(&mut self, module: M) -> &mut EndpointBuilder {
+    pub fn with_module<M: Module>(mut self, module: M) -> EndpointBuilder {
         self.modules.add_module(module);
 
         self
     }
 
-    pub fn transports(&mut self, transports: EndpointTransports) -> &mut EndpointBuilder {
-        self.transports = transports;
-
-        self
-    }
-
-    pub fn allow(&mut self, sip_method: Method) -> &mut EndpointBuilder {
+    pub fn insert_allow(&mut self, sip_method: Method) {
         self.allow.push(sip_method);
-        self
     }
 
-    pub fn accept(&mut self, media_type: MediaType) -> &mut EndpointBuilder {
+    pub fn insert_accept(&mut self, media_type: MediaType) {
         self.accept.push(media_type);
-        self
     }
 
-    pub fn supported(&mut self, tag: String) -> &mut EndpointBuilder {
+    pub fn insert_supported(&mut self, tag: String) {
         self.supported.add_tag(tag);
-        self
     }
 
     /// Finalize the Builder into a `Endpoint`.
@@ -170,11 +127,47 @@ impl EndpointBuilder {
                 name: self.name,
                 capabilities,
                 resolver: self.resolver,
-                modules: modules,
+                modules,
             }),
         };
 
-        self.transports.bind(endpoint.clone()).await?;
+        let mut tcp_resolvers = mem::take(&mut self.tcp);
+        let mut udp_resolvers = mem::take(&mut self.udp);
+        let mut ws_resolvers = mem::take(&mut self.ws);
+
+        while let Some(resolver) = tcp_resolvers.pop() {
+            for addr in resolver.resolve()? {
+                let tcp = TcpListener::bind(addr).await?;
+                log::info!(
+                    "SIP TCP listener ready for incoming connections at: {}",
+                    tcp.local_addr()
+                );
+                tokio::spawn(tcp.accept_clients(endpoint.clone()));
+            }
+        }
+
+        while let Some(resolver) = udp_resolvers.pop() {
+            for addr in resolver.resolve()? {
+                let udp = UdpTransport::bind(addr).await?;
+                log::info!("SIP UDP transport started, bound to: {}", udp.local_addr());
+                endpoint
+                    .transports()
+                    .register_transport(Transport::new(udp.clone()));
+
+                tokio::spawn(udp.receive_datagram(endpoint.clone()));
+            }
+        }
+
+        while let Some(resolver) = ws_resolvers.pop() {
+            for addr in resolver.resolve()? {
+                let ws = WebSocketListener::bind(addr).await?;
+                log::info!(
+                    "SIP WS listener ready for incoming connections at: {}",
+                    ws.local_addr()
+                );
+                tokio::spawn(ws.accept_clients(endpoint.clone()));
+            }
+        }
 
         Ok(endpoint)
     }

@@ -1,11 +1,11 @@
 [workspace]
-members = ["voip-sip", "voip-utils", "examples", "voip-sdp", "voip"]
+members = ["voip-sip", "utils", "examples", "voip-sdp", "voip"]
 resolver = "2"
 
 [workspace.dependencies]
 sip = { path = "voip-sip", package = "voip-sip"}
 sdp = { path = "voip-sdp", package = "voip-sdp" }
-utils = { path = "voip-utils", package = "voip-utils" }
+utils = { path = "utils", package = "utils" }
 tokio = { version = "1.41.1", features = [
     "net",
     "rt-multi-thread",
@@ -16,6 +16,7 @@ tokio = { version = "1.41.1", features = [
 ] }
 thiserror = "2.0.12"
 bytes = "1"
+assert_matches = "1.5"
 
 [workspace.package]
 edition = "2024"

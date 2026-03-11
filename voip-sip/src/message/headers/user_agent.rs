@@ -1,12 +1,12 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UserAgent(String);
 
-impl HeaderParser for UserAgent {
+impl HeaderParse for UserAgent {
     const NAME: &'static str = "User-Agent";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {

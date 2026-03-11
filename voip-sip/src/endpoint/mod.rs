@@ -3,16 +3,18 @@
 
 mod builder;
 mod module;
+mod to_take;
 
 use std::any::type_name;
 use std::borrow::Cow;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-pub use builder::{EndpointBuilder, EndpointTransports};
+pub use builder::EndpointBuilder;
 use bytes::Bytes;
 pub use module::{Module, ReceivedRequest, ReceivedResponse};
-use utils::{DnsResolver, ToTake};
+use to_take::ToTake;
+use utils::DnsResolver;
 
 use crate::Result;
 use crate::endpoint::module::Modules;
@@ -138,7 +140,7 @@ impl Endpoint {
 
         let reason = match reason {
             None => code.reason(),
-            Some(reason) => reason.into(),
+            Some(reason) => reason,
         };
         let status_line = StatusLine { code, reason };
         let response = Response::with_headers(status_line, headers);
@@ -253,7 +255,7 @@ impl Endpoint {
             let name_addr = NameAddr::new(request.req_line.uri.clone());
             let route = Header::Route(Route {
                 name_addr,
-                params: None,
+                params: Default::default(),
             });
             let index = request
                 .headers
@@ -324,7 +326,7 @@ impl Endpoint {
                 // 4. Server Behavior
                 // the server MUST insert a "received" parameter containing the source
                 // IP address that the request came from.
-                headers.via.set_received(message.packet.source.ip().into());
+                headers.via.set_received(message.packet.source.ip());
                 let info = IncomingInfo {
                     mandatory_headers: headers,
                     transport: message,
@@ -340,7 +342,7 @@ impl Endpoint {
                 // 4. Server Behavior
                 // the server MUST insert a "received" parameter containing the source
                 // IP address that the request came from.
-                headers.via.set_received(message.packet.source.ip().into());
+                headers.via.set_received(message.packet.source.ip());
                 let info = IncomingInfo {
                     mandatory_headers: headers,
                     transport: message,

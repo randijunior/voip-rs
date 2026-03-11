@@ -50,7 +50,6 @@ mod www_authenticate;
 use core::fmt;
 use std::convert;
 use std::ops::{Index, IndexMut, Range, RangeBounds, RangeFrom};
-use std::str::{self};
 use std::vec::Splice;
 
 pub use accept::Accept;

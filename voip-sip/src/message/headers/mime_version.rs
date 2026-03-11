@@ -1,7 +1,7 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MimeVersion {
@@ -9,17 +9,17 @@ pub struct MimeVersion {
     minor: u8,
 }
 
-impl HeaderParser for MimeVersion {
+impl HeaderParse for MimeVersion {
     const NAME: &'static str = "MIME-Version";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
         let (major, _, minor) = (
-            parser.read()? - b'0',
+            parser.advance()? - b'0',
             parser.must_read(b'.')?,
-            parser.read()? - b'0',
+            parser.advance()? - b'0',
         );
 
-        Ok(MimeVersion { major, minor })
+        Ok(Self { major, minor })
     }
 }
 

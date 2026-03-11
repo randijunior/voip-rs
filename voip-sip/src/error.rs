@@ -1,7 +1,8 @@
+use std::fmt;
 use std::str::{self, Utf8Error};
 
 use thiserror::Error;
-use utils::{Position, ScannerError};
+use utils::{Position, ScannerError, ScannerErrorKind};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -46,7 +47,7 @@ pub enum Error {
     #[error("Invalid Status Code")]
     InvalidStatusCode,
 
-    #[error("Fmt Error")]
+    #[error("Fmt Error: {0}")]
     FmtError(std::fmt::Error),
 
     #[error("Internal error: {0}")]
@@ -65,29 +66,45 @@ pub struct ParseError {
     pub position: Position,
 }
 
-impl ParseError {
-    pub fn new(kind: ParseErrorKind, position: Position) -> Self {
-        Self { kind, position }
-    }
-}
-
-impl std::fmt::Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:#?} {:#?}", self.kind, self.position)
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+impl From<ScannerError> for ParseError {
+    fn from(value: ScannerError) -> Self {
+        Self {
+            kind: ParseErrorKind::Scanner(value.kind),
+            position: value.position,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum ParseErrorKind {
+    #[error("syntax error: {s}")]
+    SyntaxError { s: String },
+    #[error("invalid port")]
+    Port,
+    #[error("invalid scheme")]
+    Scheme,
+    #[error("invalid status code")]
     StatusCode,
-    Header,
+    #[error("invalid host")]
     Host,
+    #[error("invalid sip method")]
     Method,
+    #[error("invalid sip version expected: 'SIP/2.0'")]
     Version,
+    #[error("invalid sip uri")]
     Uri,
+    #[error("invalid sip parameter")]
     Param,
+    #[error("invalid sip transport")]
     Transport,
-    Scanner(ScannerError),
+    #[error("ScannerError: {:#?}", .0)]
+    Scanner(ScannerErrorKind),
 }
 
 #[derive(Debug, Error, PartialEq)]

@@ -1,7 +1,7 @@
 use std::{fmt, str};
 
-use crate::error::{ParseErrorKind as ErrorKind, Result};
-use crate::parser::{HeaderParser, SipParser};
+use crate::error::Result;
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Warning {
@@ -10,23 +10,20 @@ pub struct Warning {
     text: String,
 }
 
-impl HeaderParser for Warning {
+impl HeaderParse for Warning {
     const NAME: &'static str = "Warning";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let code = parser.read_u32()?;
+        let code = parser.parse_u32()?;
         parser.skip_ws();
-        let host = parser.read_host_str().to_owned();
+        let host = parser.read_host().to_owned();
         parser.skip_ws();
-        let Some(b'"') = parser.peek() else {
-            return parser.parse_error(ErrorKind::Header);
-        };
-        parser.read()?;
-        let text = parser.read_until(b'"');
-        parser.read()?;
+        parser.must_read(b'"')?;
+        let text = parser.take_until(b'"');
+        parser.advance()?;
         let text = str::from_utf8(text)?.to_owned();
 
-        Ok(Warning { code, host, text })
+        Ok(Self { code, host, text })
     }
 }
 

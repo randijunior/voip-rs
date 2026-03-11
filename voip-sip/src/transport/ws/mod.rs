@@ -53,7 +53,7 @@ impl WebSocketTransport {
     /// Establish WebSocket connection.
     pub async fn connect(url: &str, timeout: f64, endpoint: &Endpoint) -> Result<Transport> {
         // TODO: url should be `HostPort`.
-        let mut request = url.into_client_request().map_err(|e| IoError::other(e))?;
+        let mut request = url.into_client_request().map_err(IoError::other)?;
 
         let headers = request.headers_mut();
         headers.insert(SEC_WEBSOCKET_PROTOCOL, SIP);
@@ -101,11 +101,10 @@ impl WebSocketTransport {
 
     /// Send a message over the WebSocket connection.
     async fn ws_send_msg(&self, msg: WsMessage) -> Result<()> {
-        Ok(self
-            .sender
+        self.sender
             .send(msg)
             .await
-            .map_err(|_| Error::ChannelClosed)?)
+            .map_err(|_| Error::ChannelClosed)
     }
 }
 
@@ -217,20 +216,20 @@ impl WebSocketListener {
 
         let headers = request.headers();
 
-        if headers.get(UPGRADE).map_or(false, |v| v != "websocket") {
+        if headers.get(UPGRADE).is_some_and(|v| v != "websocket") {
             return Ok(make_http_response(426, "Upgrade Required"));
         }
 
         if headers
             .get(SEC_WEBSOCKET_VERSION)
-            .map_or(false, |v| v != "13")
+            .is_some_and(|v| v != "13")
         {
             return Ok(make_http_response(400, "Invalid Web Socket Version"));
         }
 
         if headers
             .get(SEC_WEBSOCKET_PROTOCOL)
-            .map_or(false, |v| v != "sip")
+            .is_some_and(|v| v != "sip")
         {
             return Ok(make_http_response(400, "Invalid WebSocket Protocol"));
         }

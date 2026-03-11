@@ -1,13 +1,13 @@
 use std::fmt;
 
 use crate::error::Result;
-use crate::message::auth::Challenge;
-use crate::parser::{HeaderParser, SipParser};
+use crate::message::sip_auth::Challenge;
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WWWAuthenticate(Challenge);
 
-impl HeaderParser for WWWAuthenticate {
+impl HeaderParse for WWWAuthenticate {
     const NAME: &'static str = "WWW-Authenticate";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {

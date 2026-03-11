@@ -1,9 +1,9 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::macros::parse_header_param;
+use crate::macros::{self};
 use crate::message::param::Params;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 const PURPOSE: &str = "purpose";
 
@@ -11,19 +11,27 @@ const PURPOSE: &str = "purpose";
 pub struct CallInfo {
     url: String,
     purpose: Option<String>,
-    params: Option<Params>,
+    params: Params,
 }
 
-impl HeaderParser for CallInfo {
+impl HeaderParse for CallInfo {
     const NAME: &'static str = "Call-Info";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
         let mut purpose: Option<String> = None;
         parser.must_read(b'<')?;
-        let url = parser.read_until(b'>');
-        parser.read()?;
+        let url = parser.take_until(b'>');
+        parser.advance()?;
         let url = str::from_utf8(url)?.to_owned();
-        let params = parse_header_param!(parser, PURPOSE = purpose);
+        let params = macros::parse_params!(parser, {
+            let (pname, pvalue) = parser.param_ref()?;
+            if pname == PURPOSE {
+                purpose = pvalue.map(ToOwned::to_owned);
+                None
+            } else {
+                Some((pname, pvalue).into())
+            }
+        });
 
         Ok(Self {
             url,
@@ -39,9 +47,7 @@ impl fmt::Display for CallInfo {
         if let Some(purpose) = &self.purpose {
             write!(f, ";{}", purpose)?;
         }
-        if let Some(params) = &self.params {
-            write!(f, "{}", params)?;
-        }
+        write!(f, "{}", self.params)?;
         Ok(())
     }
 }

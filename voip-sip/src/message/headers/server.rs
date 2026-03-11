@@ -1,12 +1,12 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Server(String);
 
-impl HeaderParser for Server {
+impl HeaderParse for Server {
     const NAME: &'static str = "Server";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {

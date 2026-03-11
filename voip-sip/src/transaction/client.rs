@@ -119,20 +119,13 @@ impl ClientTransaction {
     async fn recv_provisional_msg(&mut self) -> Option<IncomingResponse> {
         match self
             .channel
-            .recv_if(|msg| match msg {
-                TransactionMessage::Response(response)
-                    if response.status_line.code.is_provisional() =>
-                {
-                    true
-                }
-                _ => false,
-            })
+            .recv_if(|msg| matches!(msg, TransactionMessage::Response(response) if response.status_line.code.is_provisional()))
             .await
         {
             Some(TransactionMessage::Response(provisional_response)) => {
-                return Some(provisional_response);
+                Some(provisional_response)
             }
-            _ => return None,
+            _ => None,
         }
     }
 
@@ -143,7 +136,7 @@ impl ClientTransaction {
             {
                 let mut retrans_interval = T1;
                 loop {
-                    let timer = self.timeout.into();
+                    let timer = self.timeout;
                     let msg = timeout(retrans_interval, self.recv_provisional_msg());
 
                     match timeout_at(timer, msg).await {

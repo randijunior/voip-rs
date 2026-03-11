@@ -7,6 +7,15 @@ pub(crate) type ParamRef<'a> = (&'a str, Option<&'a str>);
 pub(crate) const TAG_PARAM: &str = "tag";
 pub(crate) const Q_PARAM: &str = "q";
 pub(crate) const EXPIRES_PARAM: &str = "expires";
+pub(crate) const USER_PARAM: &str = "user";
+pub(crate) const METHOD_PARAM: &str = "method";
+pub(crate) const TRANSPORT_PARAM: &str = "transport";
+pub(crate) const TTL_PARAM: &str = "ttl";
+pub(crate) const LR_PARAM: &str = "lr";
+pub(crate) const MADDR_PARAM: &str = "maddr";
+pub(crate) const BRANCH_PARAM: &str = "branch";
+pub(crate) const RPORT_PARAM: &str = "rport";
+pub(crate) const RECEIVED_PARAM: &str = "received";
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct Params {
@@ -77,7 +86,7 @@ impl str::FromStr for Param {
     type Err = error::Error;
 
     fn from_str(s: &str) -> error::Result<Self> {
-        Ok(parser::SipParser::new(s).parse_param_ref()?.into())
+        Ok(parser::SipParser::new(s).param_ref()?.into())
     }
 }
 

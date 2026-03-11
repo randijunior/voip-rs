@@ -1,7 +1,7 @@
 use std::ops::{Index, Range};
 
 #[macro_export]
-macro_rules! lookup {
+macro_rules! lookup_table {
     ($( $slice:expr ),+) => {
         {
             let mut arr = [false; 256];

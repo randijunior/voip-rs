@@ -126,7 +126,7 @@ impl Dialog {
                 }
                 self.remote_cseq = request_cseq;
 
-                return Ok(Some(request));
+                Ok(Some(request))
             }
             Some(DialogMessage::Response(incoming_response)) => todo!(),
             None => Ok(None),
@@ -173,7 +173,7 @@ impl DialogId {
 
 pub(super) struct RouteSet {
     uri: Uri,
-    params: Option<Params>,
+    params: Params,
 }
 
 impl RouteSet {
@@ -184,7 +184,7 @@ impl RouteSet {
                 if let Header::RecordRoute(route) = header {
                     Some(RouteSet {
                         uri: route.name_addr().uri.clone(),
-                        params: route.params().cloned(),
+                        params: route.params().clone(),
                     })
                 } else {
                     None

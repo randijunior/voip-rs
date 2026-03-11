@@ -3,26 +3,25 @@ use std::{fmt, str};
 use itertools::Itertools;
 
 use crate::error::Result;
-use crate::macros::{parse_comma_separated_header_value, parse_header_param};
+use crate::macros;
 use crate::message::param::Params;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ErrorInfoUri {
     url: String,
-    params: Option<Params>,
+    params: Params,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ErrorInfo(Vec<ErrorInfoUri>);
 
-impl HeaderParser for ErrorInfo {
+impl HeaderParse for ErrorInfo {
     const NAME: &'static str = "Error-Info";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let infos = parse_comma_separated_header_value!(parser => {
-            ErrorInfoUri::parse(parser)?
-        });
+        let infos =
+            macros::collect_elems_separated_by_comma!(parser, { ErrorInfoUri::parse(parser)? });
 
         Ok(Self(infos))
     }
@@ -31,11 +30,11 @@ impl HeaderParser for ErrorInfo {
 impl ErrorInfoUri {
     pub fn parse(parser: &mut SipParser) -> Result<Self> {
         parser.must_read(b'<')?;
-        let url = parser.read_until(b'>');
-        parser.read()?;
+        let url = parser.take_until(b'>');
+        parser.advance()?;
 
         let url = str::from_utf8(url)?.to_owned();
-        let params = parse_header_param!(parser);
+        let params = macros::parse_params!(parser);
 
         Ok(Self { url, params })
     }
@@ -44,10 +43,7 @@ impl ErrorInfoUri {
 impl fmt::Display for ErrorInfoUri {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.url)?;
-
-        if let Some(param) = &self.params {
-            write!(f, ";{}", param)?;
-        }
+        write!(f, ";{}", self.params)?;
 
         Ok(())
     }

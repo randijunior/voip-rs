@@ -3,17 +3,18 @@ use std::{fmt, str};
 use itertools::Itertools;
 
 use crate::error::Result;
-use crate::macros::parse_comma_separated_header_value;
-use crate::parser::{HeaderParser, SipParser};
+use crate::macros;
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Unsupported(Vec<String>);
 
-impl HeaderParser for Unsupported {
+impl HeaderParse for Unsupported {
     const NAME: &'static str = "Unsupported";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let tags = parse_comma_separated_header_value!(parser => parser.parse_token()?.to_owned());
+        let tags =
+            macros::collect_elems_separated_by_comma!(parser, { parser.token()?.to_owned() });
 
         Ok(Self(tags))
     }

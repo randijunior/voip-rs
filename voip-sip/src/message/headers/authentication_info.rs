@@ -1,10 +1,8 @@
 use std::{fmt, str};
 
-use crate::error::{ParseErrorKind as ErrorKind, Result};
-use crate::macros::comma_separated;
-use crate::message::auth::{CNONCE, NC, NEXTNONCE, QOP, RSPAUTH};
-use crate::message::param::Param;
-use crate::parser::{HeaderParser, SipParser};
+use crate::error::Result;
+use crate::message::sip_auth;
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct AuthenticationInfo {
@@ -15,23 +13,29 @@ pub struct AuthenticationInfo {
     nc: Option<String>,
 }
 
-impl HeaderParser for AuthenticationInfo {
+impl HeaderParse for AuthenticationInfo {
     const NAME: &'static str = "Authentication-Info";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
         let mut auth_info = Self::default();
 
-        comma_separated!(parser => {
-            let Param {name, value} = parser.parse_param_ref()?.into();
-            match name.as_ref() {
-                NEXTNONCE => auth_info.nextnonce = value,
-                QOP => auth_info.qop = value,
-                RSPAUTH => auth_info.rspauth = value,
-                CNONCE => auth_info.cnonce = value,
-                NC => auth_info.nc = value,
-                _ => parser.parse_error(ErrorKind::Header)?,
+        loop {
+            parser.skip_ws();
+            let (name, value) = parser.param_ref()?;
+            match name {
+                sip_auth::NEXTNONCE => auth_info.nextnonce = value.map(ToOwned::to_owned),
+                sip_auth::QOP => auth_info.qop = value.map(ToOwned::to_owned),
+                sip_auth::RSPAUTH => auth_info.rspauth = value.map(ToOwned::to_owned),
+                sip_auth::CNONCE => auth_info.cnonce = value.map(ToOwned::to_owned),
+                sip_auth::NC => auth_info.nc = value.map(ToOwned::to_owned),
+                // TODO: error here
+                _ => {}
             };
-        });
+
+            if parser.take_if_eq(b',').is_none() {
+                break;
+            }
+        }
 
         Ok(auth_info)
     }

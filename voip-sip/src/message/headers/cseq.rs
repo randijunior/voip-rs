@@ -3,7 +3,7 @@ use std::str::{self, FromStr};
 
 use crate::error::Result;
 use crate::message::Method;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct CSeq {
@@ -25,15 +25,15 @@ impl CSeq {
     }
 }
 
-impl HeaderParser for CSeq {
+impl HeaderParse for CSeq {
     const NAME: &'static str = "CSeq";
 
     fn parse(parser: &mut SipParser) -> Result<CSeq> {
-        let cseq = parser.read_u32()?;
+        let cseq = parser.parse_u32()?;
 
         parser.skip_ws();
 
-        let method = parser.read_alphabetic();
+        let method = parser.take_alphabetic();
         let method = Method::from(method);
 
         Ok(Self { cseq, method })

@@ -1,32 +1,32 @@
-use std::{fmt, str, u32};
+use std::{fmt, str};
 
 use crate::error::Result;
-use crate::macros::parse_header_param;
+use crate::macros;
 use crate::message::param::Params;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RetryAfter {
     seconds: u32,
-    param: Option<Params>,
+    param: Params,
     comment: Option<String>,
 }
 
-impl HeaderParser for RetryAfter {
+impl HeaderParse for RetryAfter {
     const NAME: &'static str = "Retry-After";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let seconds = parser.read_u32()?;
+        let seconds = parser.parse_u32()?;
         let mut comment = None;
 
         parser.skip_ws();
         if let Some(b'(') = parser.peek() {
-            parser.read()?;
-            let b = parser.read_until(b')');
-            parser.read()?;
+            parser.advance()?;
+            let b = parser.take_until(b')');
+            parser.advance()?;
             comment = Some(str::from_utf8(b)?);
         }
-        let param = parse_header_param!(parser);
+        let param = macros::parse_params!(parser);
 
         Ok(Self {
             seconds,
@@ -42,9 +42,8 @@ impl fmt::Display for RetryAfter {
 
         write!(f, "{}", self.seconds)?;
 
-        if let Some(param) = &self.param {
-            write!(f, ";{}", param)?;
-        }
+        write!(f, "{}", self.param)?;
+
         if let Some(comment) = &self.comment {
             write!(f, "{}", comment)?;
         }

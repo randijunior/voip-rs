@@ -2,11 +2,22 @@ use core::fmt;
 use std::str::{self, FromStr};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[repr(transparent)]
 pub struct CallId(String);
+
+impl HeaderParse for CallId {
+    const NAME: &'static str = "Call-ID";
+    const SHORT_NAME: &'static str = "i";
+
+    fn parse(parser: &mut SipParser) -> Result<Self> {
+        let id = parser.read_line()?;
+
+        Ok(Self(id.to_owned()))
+    }
+}
 
 impl From<&str> for CallId {
     fn from(id: &str) -> Self {
@@ -29,17 +40,6 @@ impl CallId {
 
     pub fn id(&self) -> &str {
         &self.0
-    }
-}
-
-impl HeaderParser for CallId {
-    const NAME: &'static str = "Call-ID";
-    const SHORT_NAME: &'static str = "i";
-
-    fn parse(parser: &mut SipParser) -> Result<Self> {
-        let id = parser.read_line()?;
-
-        Ok(CallId(id.to_owned()))
     }
 }
 

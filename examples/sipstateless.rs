@@ -2,16 +2,14 @@ use std::error::Error;
 
 use tracing::Level;
 use tracing_subscriber::fmt::time::ChronoLocal;
-use voip::sip::endpoint::{
-    Endpoint, EndpointTransports, Module as EndpointModule, ReceivedRequest,
-};
+use voip::sip::endpoint::{Endpoint, Module, ReceivedRequest};
 use voip::sip::message::method::Method;
 use voip::sip::message::status_code::StatusCode;
 
 pub struct SipStateless;
 
 #[async_trait::async_trait]
-impl EndpointModule for SipStateless {
+impl Module for SipStateless {
     fn name(&self) -> &'static str {
         "sip-stateless"
     }
@@ -36,16 +34,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_timer(ChronoLocal::new(String::from("%H:%M:%S%.3f")))
         .init();
 
-    let mut transports = EndpointTransports::default();
-
-    transports.add_udp("0.0.0.0:8089")?;
-
-    let mut builder = Endpoint::builder();
-
-    builder.transports(transports);
-    builder.module(SipStateless);
-
-    let endpoint = builder.build().await?;
+    let endpoint = Endpoint::builder()
+        .with_module(SipStateless)
+        .with_udp_addr("0.0.0.0:8089")
+        .build()
+        .await?;
 
     endpoint.run_forever().await?;
 

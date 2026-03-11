@@ -1,13 +1,13 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[repr(transparent)]
 pub struct Date(String);
 
-impl HeaderParser for Date {
+impl HeaderParse for Date {
     const NAME: &'static str = "Date";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {

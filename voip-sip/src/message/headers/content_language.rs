@@ -3,20 +3,21 @@ use std::{fmt, str};
 use itertools::Itertools;
 
 use crate::error::Result;
-use crate::macros::parse_comma_separated_header_value;
+use crate::macros;
 use crate::message::headers::LanguageTag;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ContentLanguage(Vec<LanguageTag>);
 
-impl HeaderParser for ContentLanguage {
+impl HeaderParse for ContentLanguage {
     const NAME: &'static str = "Content-Language";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let languages = parse_comma_separated_header_value!(parser => LanguageTag::parse(parser));
+        let languages =
+            macros::collect_elems_separated_by_comma!(parser, { LanguageTag::parse(parser) });
 
-        Ok(ContentLanguage(languages))
+        Ok(Self(languages))
     }
 }
 

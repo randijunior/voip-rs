@@ -1,23 +1,23 @@
 use std::fmt;
 
 use crate::error::Result;
-use crate::macros::parse_header_param;
+use crate::macros;
 use crate::message::param::Params;
 use crate::message::sip_uri::NameAddr;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Route {
     pub(crate) name_addr: NameAddr,
-    pub(crate) params: Option<Params>,
+    pub(crate) params: Params,
 }
 
-impl HeaderParser for Route {
+impl HeaderParse for Route {
     const NAME: &'static str = "Route";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
         let name_addr = parser.parse_name_addr()?;
-        let params = parse_header_param!(parser);
+        let params = macros::parse_params!(parser);
         Ok(Self { name_addr, params })
     }
 }
@@ -28,9 +28,7 @@ impl fmt::Display for Route {
 
         write!(f, "{}", self.name_addr)?;
 
-        if let Some(param) = &self.params {
-            write!(f, ";{}", param)?;
-        }
+        write!(f, "{}", self.params)?;
 
         Ok(())
     }

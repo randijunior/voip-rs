@@ -1,9 +1,9 @@
 //! SIP Message types
 
-pub mod auth;
 pub mod headers;
 pub mod method;
 pub mod param;
+pub mod sip_auth;
 pub mod sip_uri;
 pub mod status_code;
 

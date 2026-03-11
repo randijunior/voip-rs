@@ -1,21 +1,20 @@
 use core::fmt;
 
-use crate::Q;
 use crate::error::Result;
-use crate::macros::parse_header_param;
 use crate::message::param::{EXPIRES_PARAM, Params, Q_PARAM};
 use crate::message::sip_uri::SipUri;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
+use crate::{Q, macros};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Contact {
     uri: SipUri,
     q: Option<Q>,
     expires: Option<u32>,
-    param: Option<Params>,
+    param: Params,
 }
 
-impl HeaderParser for Contact {
+impl HeaderParse for Contact {
     const NAME: &'static str = "Contact";
     const SHORT_NAME: &'static str = "m";
 
@@ -23,10 +22,21 @@ impl HeaderParser for Contact {
         let uri = parser.parse_sip_uri(false)?;
         let mut q = None;
         let mut expires = None;
-        let param = parse_header_param!(parser, Q_PARAM = q, EXPIRES_PARAM = expires);
-
-        let q = q.map(|q: &str| q.parse()).transpose()?;
-        let expires = expires.and_then(|expires: &str| expires.parse().ok());
+        let param = macros::parse_params!(parser, {
+            let (pname, pvalue) = parser.param_ref()?;
+            if pname == Q_PARAM {
+                q = pvalue.map(std::str::FromStr::from_str).transpose()?;
+                None
+            } else if pname == EXPIRES_PARAM {
+                expires = pvalue
+                    .map(std::str::FromStr::from_str)
+                    .transpose()
+                    .or_else(|_| parser.error(crate::error::ParseErrorKind::Param))?;
+                None
+            } else {
+                Some((pname, pvalue).into())
+            }
+        });
 
         Ok(Contact {
             uri,
@@ -57,9 +67,7 @@ impl fmt::Display for Contact {
         if let Some(expires) = self.expires {
             write!(f, "{}", expires)?;
         }
-        if let Some(param) = &self.param {
-            write!(f, "{}", param)?;
-        }
+        write!(f, "{}", self.param)?;
         Ok(())
     }
 }

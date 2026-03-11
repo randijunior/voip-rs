@@ -1,11 +1,21 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(transparent)]
 pub struct MinExpires(u32);
+
+impl HeaderParse for MinExpires {
+    const NAME: &'static str = "Min-Expires";
+
+    fn parse(parser: &mut SipParser) -> Result<Self> {
+        let expires = parser.parse_u32()?;
+
+        Ok(Self(expires))
+    }
+}
 
 impl MinExpires {
     #[inline]
@@ -16,16 +26,6 @@ impl MinExpires {
     #[inline]
     pub const fn as_u32(&self) -> u32 {
         self.0
-    }
-}
-
-impl HeaderParser for MinExpires {
-    const NAME: &'static str = "Min-Expires";
-
-    fn parse(parser: &mut SipParser) -> Result<Self> {
-        let expires = parser.read_u32()?;
-
-        Ok(Self(expires))
     }
 }
 

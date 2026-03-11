@@ -69,6 +69,12 @@ impl Method {
     }
 }
 
+impl From<&str> for Method {
+    fn from(value: &str) -> Self {
+        value.as_bytes().into()
+    }
+}
+
 impl From<&[u8]> for Method {
     fn from(value: &[u8]) -> Self {
         match value {

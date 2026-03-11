@@ -1,20 +1,20 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(transparent)]
 pub struct ContentLength(u32);
 
-impl HeaderParser for ContentLength {
+impl HeaderParse for ContentLength {
     const NAME: &'static str = "Content-Length";
     const SHORT_NAME: &'static str = "l";
 
     fn parse(parser: &mut SipParser) -> Result<ContentLength> {
-        let l = parser.read_u32()?;
+        let l = parser.parse_u32()?;
 
-        Ok(ContentLength(l))
+        Ok(Self(l))
     }
 }
 

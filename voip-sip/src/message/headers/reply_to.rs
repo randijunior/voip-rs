@@ -1,23 +1,23 @@
 use std::fmt;
 
 use crate::error::Result;
-use crate::macros::parse_header_param;
+use crate::macros;
 use crate::message::param::Params;
 use crate::message::sip_uri::SipUri;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ReplyTo {
     uri: SipUri,
-    param: Option<Params>,
+    param: Params,
 }
 
-impl HeaderParser for ReplyTo {
+impl HeaderParse for ReplyTo {
     const NAME: &'static str = "Reply-To";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
         let uri = parser.parse_sip_uri(false)?;
-        let param = parse_header_param!(parser);
+        let param = macros::parse_params!(parser);
 
         Ok(Self { uri, param })
     }
@@ -26,10 +26,7 @@ impl HeaderParser for ReplyTo {
 impl fmt::Display for ReplyTo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", Self::NAME, self.uri)?;
-        if let Some(param) = &self.param {
-            write!(f, ";{}", param)?;
-        }
-
+        write!(f, "{}", self.param)?;
         Ok(())
     }
 }

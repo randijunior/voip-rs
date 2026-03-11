@@ -1,12 +1,12 @@
+use std::str::FromStr;
 use std::{fmt, str};
 
 use itertools::Itertools;
 
-use crate::Q;
 use crate::error::Result;
-use crate::macros::{parse_comma_separated_header_value, parse_header_param};
-use crate::message::param::{Params, Q_PARAM};
-use crate::parser::{HeaderParser, SipParser};
+use crate::message::param::{self, Params};
+use crate::parser::{HeaderParse, SipParser};
+use crate::{Q, macros};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct AcceptEncoding(Vec<Coding>);
@@ -14,21 +14,35 @@ pub struct AcceptEncoding(Vec<Coding>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Coding {
     coding: String,
-    q: Option<Q>,
-    param: Option<Params>,
+    q_param: Option<Q>,
+    params: Params,
 }
 
-impl HeaderParser for AcceptEncoding {
+impl HeaderParse for AcceptEncoding {
     const NAME: &'static str = "Accept-Encoding";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let codings = parse_comma_separated_header_value!(parser => {
-            let coding = parser.parse_token()?;
+        let codings = macros::collect_elems_separated_by_comma!(parser, {
+            let coding = parser.token()?.to_owned();
             let mut q_param = None;
-            let param = parse_header_param!(parser, Q_PARAM = q_param);
-            let q = q_param.map(|q: &str| q.parse()).transpose()?;
 
-            Coding { coding: coding.into(), q, param }
+            let params = macros::parse_params!(parser, {
+                let (pname, pvalue) = parser.param_ref()?;
+
+                if pname == param::Q_PARAM {
+                    q_param = pvalue.map(Q::from_str).transpose()?;
+
+                    None
+                } else {
+                    Some((pname, pvalue).into())
+                }
+            });
+
+            Coding {
+                coding,
+                q_param,
+                params,
+            }
         });
 
         Ok(Self(codings))
@@ -43,15 +57,17 @@ impl fmt::Display for AcceptEncoding {
 
 impl fmt::Display for Coding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Coding { coding, q, param } = self;
+        let Coding {
+            coding,
+            q_param,
+            params,
+        } = self;
 
         write!(f, "{}", coding)?;
-        if let Some(q) = q {
+        if let Some(q) = q_param {
             write!(f, ";q={}.{}", q.0, q.1)?;
         }
-        if let Some(param) = param {
-            write!(f, ";{}", param)?;
-        }
+        write!(f, "{}", params)?;
         Ok(())
     }
 }

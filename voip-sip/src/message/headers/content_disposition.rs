@@ -1,22 +1,22 @@
 use core::fmt;
 
 use crate::error::Result;
-use crate::macros::parse_header_param;
+use crate::macros;
 use crate::message::param::Params;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ContentDisposition {
     r#type: String,
-    params: Option<Params>,
+    params: Params,
 }
 
-impl HeaderParser for ContentDisposition {
+impl HeaderParse for ContentDisposition {
     const NAME: &'static str = "Content-Disposition";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let r#type = parser.parse_token()?.to_owned();
-        let params = parse_header_param!(parser);
+        let r#type = parser.token()?.to_owned();
+        let params = macros::parse_params!(parser);
 
         Ok(Self { r#type, params })
     }
@@ -26,9 +26,7 @@ impl fmt::Display for ContentDisposition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", Self::NAME, self.r#type)?;
 
-        if let Some(param) = &self.params {
-            write!(f, ";{}", param)?;
-        }
+        write!(f, ";{}", self.params)?;
 
         Ok(())
     }

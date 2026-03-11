@@ -4,7 +4,7 @@ use std::result::Result as StdResult;
 use crate::error::{Error, Result};
 use crate::message::headers::{CSeq, CallId, From as FromHeader, Header, Headers, To, Via};
 use crate::message::{Request, Response};
-use crate::parser::HeaderParser;
+use crate::parser::HeaderParse;
 
 /// This type represents an received SIP request.
 #[derive(Clone)]

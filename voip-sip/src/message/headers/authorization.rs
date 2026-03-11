@@ -1,12 +1,22 @@
 use std::fmt;
 
 use crate::error::Result;
-use crate::message::auth::Credential;
-use crate::parser::{HeaderParser, SipParser};
+use crate::message::sip_auth::Credential;
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Authorization {
     credential: Credential,
+}
+
+impl HeaderParse for Authorization {
+    const NAME: &'static str = "Authorization";
+
+    fn parse(parser: &mut SipParser) -> Result<Self> {
+        let credential = parser.parse_auth_credential()?;
+
+        Ok(Self { credential })
+    }
 }
 
 impl Authorization {
@@ -16,16 +26,6 @@ impl Authorization {
 
     pub fn credential(&self) -> &Credential {
         &self.credential
-    }
-}
-
-impl HeaderParser for Authorization {
-    const NAME: &'static str = "Authorization";
-
-    fn parse(parser: &mut SipParser) -> Result<Self> {
-        let credential = parser.parse_auth_credential()?;
-
-        Ok(Self { credential })
     }
 }
 

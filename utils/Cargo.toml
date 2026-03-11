@@ -1,5 +1,5 @@
 [package]
-name = "voip-utils"
+name = "utils"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 hickory-resolver = "0.25.0"
 tokio.workspace = true
+
+[dev-dependencies]
+assert_matches.workspace = true

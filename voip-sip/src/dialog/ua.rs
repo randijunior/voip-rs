@@ -33,7 +33,7 @@ impl UaModule {
     pub(crate) fn remove_dialog(&self, dialog_id: &DialogId) {
         let mut dialogs = self.dialogs.lock().expect("Lock failed");
 
-        dialogs.remove(&dialog_id);
+        dialogs.remove(dialog_id);
     }
 
     // fn get_dialog_from_response(&self, response: &IncomingResponse) -> Option<mpsc::Sender<DialogMessage>> {
@@ -49,9 +49,8 @@ impl UaModule {
         &self,
         request: &IncomingRequest,
     ) -> Option<mpsc::Sender<DialogMessage>> {
-        let Some(dialog_id) = DialogId::from_incoming_request(request) else {
-            return None;
-        };
+        let dialog_id = DialogId::from_incoming_request(request)?;
+
         let dialogs = self.dialogs.lock().expect("Lock failed");
 
         dialogs.get(&dialog_id).cloned()
@@ -80,5 +79,5 @@ impl endpoint::Module for UaModule {
         }
     }
 
-    async fn on_receive_response(&self, response: ReceivedResponse<'_>, endpoint: &Endpoint) {}
+    async fn on_receive_response(&self, response: ReceivedResponse<'_>, _endpoint: &Endpoint) {}
 }

@@ -3,31 +3,28 @@ use std::{fmt, str};
 use itertools::Itertools;
 
 use crate::error::Result;
-use crate::macros::parse_comma_separated_header_value;
-use crate::parser::{HeaderParser, SipParser};
+use crate::macros;
+use crate::parser::{HeaderParse, SipParser};
 
-/// The `Supported` SIP header.
-///
-/// Enumerates all the extensions supported by the `UAC` or
-/// `UAS`.
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Supported(Vec<String>);
+
+impl HeaderParse for Supported {
+    const NAME: &'static str = "Supported";
+    const SHORT_NAME: &'static str = "k";
+
+    fn parse(parser: &mut SipParser) -> Result<Self> {
+        let tags =
+            macros::collect_elems_separated_by_comma!(parser, { parser.token()?.to_owned() });
+
+        Ok(Self(tags))
+    }
+}
 
 impl Supported {
     /// Add a new tag to the list of supported tags.
     pub fn add_tag(&mut self, tag: String) {
         self.0.push(tag);
-    }
-}
-
-impl HeaderParser for Supported {
-    const NAME: &'static str = "Supported";
-    const SHORT_NAME: &'static str = "k";
-
-    fn parse(parser: &mut SipParser) -> Result<Self> {
-        let tags = parse_comma_separated_header_value!(parser => parser.parse_token()?.to_owned());
-
-        Ok(Self(tags))
     }
 }
 

@@ -1,21 +1,22 @@
 use std::{fmt, str};
 
 use itertools::Itertools;
+use utils::byte;
 
 use crate::error::Result;
-use crate::macros::parse_comma_separated_header_value;
+use crate::macros;
 use crate::message::headers::CallId;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct InReplyTo(Vec<CallId>);
 
-impl HeaderParser for InReplyTo {
+impl HeaderParse for InReplyTo {
     const NAME: &'static str = "In-Reply-To";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let ids = parse_comma_separated_header_value!(parser => {
-            let id = parser.not_comma_or_newline();
+        let ids = macros::collect_elems_separated_by_comma!(parser, {
+            let id = parser.consume_while(|b| !byte::is_newline(b) && b != b',');
             let id = str::from_utf8(id)?;
 
             CallId::from(id)

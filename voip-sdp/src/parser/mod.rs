@@ -1,4 +1,5 @@
-use utils::{LookupTable, Scanner, is_newline, is_not_newline, is_space, lookup};
+use utils::byte::{is_newline, is_space};
+use utils::{LookupTable, Scanner, lookup_table};
 
 use crate::error::{ParseSdpError, Result};
 use crate::msg::*;
@@ -24,7 +25,7 @@ const ATTRIBUTE: SdpField = b'a';
 const TOKEN: &str = "!#$%&'*+-.^_`{|}~";
 const ALPHANUMERIC: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-const TOKEN_TAB: LookupTable = lookup!(ALPHANUMERIC, TOKEN);
+const TOKEN_TAB: LookupTable = lookup_table!(ALPHANUMERIC, TOKEN);
 
 /// A SDP message parser.
 pub struct SdpParser<'buf> {
@@ -119,7 +120,7 @@ impl<'buf> SdpParser<'buf> {
 
     #[inline]
     fn handle_new_line(&mut self) {
-        self.scanner.read_while(is_newline);
+        self.scanner.scan_while(is_newline);
     }
 
     fn parse_version(&mut self) -> Result<()> {
@@ -132,24 +133,24 @@ impl<'buf> SdpParser<'buf> {
 
     #[inline]
     fn handle_ws(&mut self) {
-        self.scanner.read_while(is_space);
+        self.scanner.scan_while(is_space);
     }
 
     fn parse_origin(&mut self) -> Result<Origin> {
         let user = self
             .scanner
-            .read_while_as_str(|b| !b.is_ascii_whitespace())?
+            .scan_while_as_str(|b| !b.is_ascii_whitespace())?
             .to_owned();
         self.handle_ws();
-        let session_id = self.scanner.read_u64()?;
+        let session_id = self.scanner.scan_u64()?;
         self.handle_ws();
-        let session_version = self.scanner.read_u64()?;
+        let session_version = self.scanner.scan_u64()?;
         self.handle_ws();
-        let nettype = self.scanner.read_until_as_str(b' ')?.to_owned();
+        let nettype = self.scanner.scan_until_as_str(b' ')?.to_owned();
         self.handle_ws();
-        let addrtype = self.scanner.read_until_as_str(b' ')?.to_owned();
+        let addrtype = self.scanner.scan_until_as_str(b' ')?.to_owned();
         self.handle_ws();
-        let unicast_address = self.scanner.read_until_any_as_str(b" \t\r\n")?.to_owned();
+        let unicast_address = self.scanner.scan_until_any_as_str(b" \t\r\n")?.to_owned();
         self.handle_ws();
 
         Ok(Origin {
@@ -164,10 +165,10 @@ impl<'buf> SdpParser<'buf> {
 
     fn parse_connection_info(&mut self) -> Result<ConnectionInformation> {
         let nettype = if self.scanner.matches_prefix(b"IN") {
-            self.scanner.advance_by(2);
+            self.scanner.advance_n(2);
             NetType::IN
         } else {
-            let other_type = self.scanner.read_while_as_str(|b| !is_space(b))?;
+            let other_type = self.scanner.scan_while_as_str(|b| !is_space(b))?;
             NetType::Other(other_type.to_owned())
         };
 
@@ -183,7 +184,7 @@ impl<'buf> SdpParser<'buf> {
                 .into());
             }
         };
-        self.scanner.advance_by(3);
+        self.scanner.advance_n(3);
 
         self.handle_ws();
         let conection_address = self.read_line()?.to_owned();
@@ -205,10 +206,10 @@ impl<'buf> SdpParser<'buf> {
             _ => return Err(ParseSdpError::SdpUnknowMediaType.into()),
         };
         self.handle_ws();
-        let port = self.scanner.read_u16()?;
+        let port = self.scanner.scan_u16()?;
         self.handle_ws();
 
-        let bytes = self.scanner.read_while(|b| !is_space(b));
+        let bytes = self.scanner.scan_while(|b| !is_space(b));
 
         let proto = match bytes {
             b"UDP" | b"udp" => SdpTransport::UDP,
@@ -223,7 +224,7 @@ impl<'buf> SdpParser<'buf> {
 
         let mut media_formats = vec![];
 
-        while self.scanner.read_byte_if(is_space).is_some() {
+        while self.scanner.scan_if(is_space).is_some() {
             let fmt = self.read_token();
 
             media_formats.push(fmt.to_owned());
@@ -247,11 +248,11 @@ impl<'buf> SdpParser<'buf> {
     }
 
     fn parse_time(&mut self) -> Result<TimeDescription> {
-        let start_time = self.scanner.read_u64()?;
+        let start_time = self.scanner.scan_u64()?;
 
         self.scanner.must_read(b' ')?;
 
-        let stop_time = self.scanner.read_u64()?;
+        let stop_time = self.scanner.scan_u64()?;
 
         Ok(TimeDescription {
             time_active: TimeActive {
@@ -263,14 +264,14 @@ impl<'buf> SdpParser<'buf> {
     }
 
     fn parse_repeat_times(&mut self) -> Result<RepeatTimes> {
-        let repeat_interval = self.scanner.read_i64()?;
+        let repeat_interval = self.scanner.scan_i64()?;
         self.handle_ws();
-        let active_duration = self.scanner.read_i64()?;
+        let active_duration = self.scanner.scan_i64()?;
 
         let mut offsets = vec![];
 
-        while self.scanner.read_byte_if(is_space).is_some() {
-            let offset = self.scanner.read_i64()?;
+        while self.scanner.scan_if(is_space).is_some() {
+            let offset = self.scanner.scan_i64()?;
             offsets.push(offset);
 
             if matches!(self.scanner.peek(), Some(b'\r') | Some(b'\n') | None) {
@@ -286,7 +287,7 @@ impl<'buf> SdpParser<'buf> {
     }
 
     fn parse_bandwidth(&mut self) -> Result<BandwidthInformation> {
-        let bwtype = match self.scanner.read_until_as_str(b':')? {
+        let bwtype = match self.scanner.scan_until_as_str(b':')? {
             "CT" => Bwtype::CT,
             "AS" => Bwtype::AS,
             "RR" => Bwtype::RR,
@@ -294,7 +295,7 @@ impl<'buf> SdpParser<'buf> {
             "TIAS" => Bwtype::TIAS,
             other => Bwtype::Other(other.to_owned()),
         };
-        let bandwidth = self.scanner.read_u64()?;
+        let bandwidth = self.scanner.scan_u64()?;
 
         Ok(BandwidthInformation { bwtype, bandwidth })
     }
@@ -302,7 +303,7 @@ impl<'buf> SdpParser<'buf> {
     fn parse_attribute(&mut self) -> Result<Attribute> {
         let attr_name = self.read_token().to_owned();
 
-        let attr_value = if self.scanner.read_if_eq(b':').is_some() {
+        let attr_value = if self.scanner.scan_if_eq(b':').is_some() {
             Some(self.read_line()?.to_owned())
         } else {
             None
@@ -322,9 +323,9 @@ impl<'buf> SdpParser<'buf> {
 
         self.scanner.must_read(b'/')?;
 
-        let clock_rate = self.scanner.read_u32()?;
+        let clock_rate = self.scanner.scan_u32()?;
 
-        let param = if self.scanner.read_if_eq(b'/').is_some() {
+        let param = if self.scanner.scan_if_eq(b'/').is_some() {
             Some(self.read_token().to_owned())
         } else {
             None
@@ -336,23 +337,23 @@ impl<'buf> SdpParser<'buf> {
             payload_type,
             enc_name: encoding_name,
             clock_rate,
-            param: param,
+            param,
         })
     }
 
     #[inline]
     fn read_token(&mut self) -> &str {
-        unsafe { self.scanner.read_while_as_str_unchecked(is_token) }
+        unsafe { self.scanner.scan_while_as_str_unchecked(is_token) }
     }
 
     #[inline]
     fn read_line(&mut self) -> Result<&str> {
-        let attr = self.scanner.read_while_as_str(is_not_newline)?;
+        let attr = self.scanner.scan_line()?;
         Ok(attr)
     }
 
     fn read_field(&mut self) -> Result<SdpField> {
-        let field = self.scanner.next()?;
+        let field = self.scanner.next_byte()?;
 
         self.scanner.must_read(b'=')?;
 

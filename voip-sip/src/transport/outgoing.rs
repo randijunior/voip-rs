@@ -7,7 +7,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use crate::error::Result;
 use crate::message::headers::ContentLength;
 use crate::message::{Request, Response, SipBody};
-use crate::parser::HeaderParser;
+use crate::parser::HeaderParse;
 
 /// This type represents an outbound SIP request.
 pub struct OutgoingRequest {

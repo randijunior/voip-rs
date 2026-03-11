@@ -1,16 +1,16 @@
 use std::{fmt, str};
 
 use crate::error::Result;
-use crate::parser::{HeaderParser, SipParser};
+use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Priority(String);
 
-impl HeaderParser for Priority {
+impl HeaderParse for Priority {
     const NAME: &'static str = "Priority";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let priority = parser.parse_token()?;
+        let priority = parser.token()?;
 
         Ok(Self(priority.to_owned()))
     }

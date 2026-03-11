@@ -1,13 +1,13 @@
+use std::str::FromStr;
 use std::{fmt, str};
 
 use itertools::Itertools;
-use utils::is_alphabetic;
+use utils::byte;
 
-use crate::Q;
 use crate::error::Result;
-use crate::macros::{parse_comma_separated_header_value, parse_header_param};
-use crate::message::param::{Params, Q_PARAM};
-use crate::parser::{HeaderParser, SipParser};
+use crate::message::param::{self, Params};
+use crate::parser::{HeaderParse, SipParser};
+use crate::{Q, macros};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct AcceptLanguage(Vec<Language>);
@@ -15,41 +15,38 @@ pub struct AcceptLanguage(Vec<Language>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Language {
     language: LanguageTag,
-    q: Option<Q>,
-    param: Option<Params>,
+    q_param: Option<Q>,
+    params: Params,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguageTag(String);
 
-impl LanguageTag {
-    pub fn parse(parser: &mut SipParser) -> Self {
-        let is_lang = |byte: u8| is_alphabetic(byte) || matches!(byte, b'*' | b'-');
-        let s = unsafe { parser.read_while_as_str_unchecked(is_lang) };
-
-        Self(s.to_owned())
-    }
-}
-
-impl fmt::Display for LanguageTag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-
-        Ok(())
-    }
-}
-
-impl HeaderParser for AcceptLanguage {
+impl HeaderParse for AcceptLanguage {
     const NAME: &'static str = "Accept-Language";
 
     fn parse(parser: &mut SipParser) -> Result<Self> {
-        let languages = parse_comma_separated_header_value!(parser => {
+        let languages = macros::collect_elems_separated_by_comma!(parser, {
             let language = LanguageTag::parse(parser);
             let mut q_param = None;
-            let param = parse_header_param!(parser, Q_PARAM = q_param);
-            let q = q_param.map(|q: &str| q.parse()).transpose()?;
 
-            Language { language: language.into(), q, param }
+            let params = macros::parse_params!(parser, {
+                let (pname, pvalue) = parser.param_ref()?;
+
+                if pname == param::Q_PARAM {
+                    q_param = pvalue.map(Q::from_str).transpose()?;
+
+                    None
+                } else {
+                    Some((pname, pvalue).into())
+                }
+            });
+
+            Language {
+                language,
+                q_param,
+                params,
+            }
         });
 
         Ok(Self(languages))
@@ -66,26 +63,49 @@ impl Language {
     pub fn new(language: LanguageTag) -> Self {
         Self {
             language,
-            q: None,
-            param: None,
+            q_param: None,
+            params: Params::default(),
         }
     }
 
-    pub fn from_parts(language: LanguageTag, q: Option<Q>, param: Option<Params>) -> Self {
-        Self { language, q, param }
+    pub fn from_parts(language: LanguageTag, q_param: Option<Q>, params: Params) -> Self {
+        Self {
+            language,
+            q_param,
+            params,
+        }
     }
 }
 
 impl fmt::Display for Language {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Language { language, q, param } = self;
+        let Language {
+            language,
+            q_param,
+            params,
+        } = self;
         write!(f, "{}", language)?;
-        if let Some(q) = q {
+        if let Some(q) = q_param {
             write!(f, "{}", q)?;
         }
-        if let Some(param) = param {
-            write!(f, ";{}", param)?;
-        }
+        write!(f, "{}", params)?;
+        Ok(())
+    }
+}
+
+impl LanguageTag {
+    pub fn parse(parser: &mut SipParser) -> Self {
+        let is_lang = |byte: u8| byte::is_alphabetic(byte) || matches!(byte, b'*' | b'-');
+        let tag = unsafe { parser.read_while_as_str_unchecked(is_lang) };
+
+        Self(tag.to_owned())
+    }
+}
+
+impl fmt::Display for LanguageTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+
         Ok(())
     }
 }
