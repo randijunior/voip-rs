@@ -29,7 +29,7 @@ impl HeaderParse for AuthenticationInfo {
                 sip_auth::CNONCE => auth_info.cnonce = value.map(ToOwned::to_owned),
                 sip_auth::NC => auth_info.nc = value.map(ToOwned::to_owned),
                 // TODO: error here
-                _ => {}
+                _ => (),
             };
 
             if parser.take_if_eq(b',').is_none() {

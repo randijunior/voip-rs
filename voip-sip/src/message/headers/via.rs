@@ -7,11 +7,11 @@ use crate::macros;
 use crate::message::param::{self, Params};
 use crate::message::sip_uri::{Host, HostPort};
 use crate::parser::{HeaderParse, SIPV2, SipParser};
-use crate::transport::SipTransportType;
+use crate::transport::TransportProtocol;
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct Via {
-    transport: SipTransportType,
+    transport: TransportProtocol,
     sent_by: HostPort,
     ttl: Option<u8>,
     maddr: Option<Host>,
@@ -24,11 +24,11 @@ pub struct Via {
 
 impl Via {
     pub fn new_udp(sent_by: HostPort, branch: Option<String>) -> Self {
-        Self::new_with_transport(SipTransportType::Udp, sent_by, branch)
+        Self::new_with_transport(TransportProtocol::Udp, sent_by, branch)
     }
 
     pub fn new_with_transport(
-        transport: SipTransportType,
+        transport: TransportProtocol,
         sent_by: HostPort,
         branch: Option<String>,
     ) -> Self {
@@ -55,6 +55,26 @@ impl Via {
 
     pub fn set_received(&mut self, received: IpAddr) {
         self.received = Some(received);
+    }
+
+    pub fn maddr(&self) -> Option<&Host> {
+        self.maddr.as_ref()
+    }
+
+    pub fn sent_by(&self) -> &HostPort {
+        &self.sent_by
+    }
+
+    pub fn received(&self) -> Option<IpAddr> {
+        self.received
+    }
+
+    pub fn rport(&self) -> Option<u16> {
+        self.rport
+    }
+
+    pub fn sent_protocol(&self) -> TransportProtocol {
+        self.transport
     }
 }
 

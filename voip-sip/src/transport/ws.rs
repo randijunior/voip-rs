@@ -28,9 +28,10 @@ use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
 use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
-use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
-use crate::transport::{Packet, SipTransport, SipTransportType, Transport, TransportMessage};
+use crate::transport::{
+    Packet, SipTransport, Transport, TransportLayer, TransportMessage, TransportProtocol,
+};
 
 const SIP: HeaderValue = HeaderValue::from_static("sip");
 
@@ -51,20 +52,21 @@ pub struct WebSocketTransport {
 
 impl WebSocketTransport {
     /// Establish WebSocket connection.
-    pub async fn connect(url: &str, timeout: f64, endpoint: &Endpoint) -> Result<Transport> {
-        // TODO: url should be `HostPort`.
+    pub async fn connect(
+        url: impl IntoClientRequest,
+        timeout: Duration,
+        transports: &TransportLayer,
+    ) -> Result<Transport> {
         let mut request = url.into_client_request().map_err(IoError::other)?;
 
-        let headers = request.headers_mut();
-        headers.insert(SEC_WEBSOCKET_PROTOCOL, SIP);
+        request.headers_mut().insert(SEC_WEBSOCKET_PROTOCOL, SIP);
 
-        let (stream, _response) =
-            tokio::time::timeout(Duration::from_secs_f64(timeout), connect_async(request))
-                .await
-                .map_err(|e| IoError::new(IoErrorKind::TimedOut, e))?
-                .map_err(|_| {
-                    crate::Error::TransportError(format!("WebSocket Connection to {} failed!", url))
-                })?;
+        let (stream, _response) = tokio::time::timeout(timeout, connect_async(request))
+            .await
+            .map_err(|e| IoError::new(IoErrorKind::TimedOut, e))?
+            .map_err(|e| {
+                crate::Error::TransportError(format!("WebSocket Connection failed {e}!"))
+            })?;
 
         let (local_addr, peer_addr) = match stream.get_ref() {
             MaybeTlsStream::Plain(tcp_stream) => {
@@ -85,12 +87,12 @@ impl WebSocketTransport {
         };
         let transport = Transport::new(ws_transport);
 
-        let endpoint_clone = endpoint.clone();
+        let transports_clone = transports.clone();
         let transport_clone = transport.clone();
         // Handle connection in separate task
         tokio::spawn(handle_ws_connection(
             peer_addr,
-            endpoint_clone,
+            transports_clone,
             transport_clone,
             stream,
             rx,
@@ -120,8 +122,8 @@ impl SipTransport for WebSocketTransport {
         Some(self.peer_addr)
     }
 
-    fn transport_type(&self) -> SipTransportType {
-        SipTransportType::Ws
+    fn protocol(&self) -> TransportProtocol {
+        TransportProtocol::Ws
     }
 
     fn local_addr(&self) -> SocketAddr {
@@ -166,7 +168,7 @@ impl WebSocketListener {
     }
 
     /// Accepts incoming TCP connections and upgrade to a WebSocket connection.
-    pub async fn accept_clients(self, endpoint: Endpoint) -> Result<()> {
+    pub async fn accept_clients(self, transports: TransportLayer) -> Result<()> {
         loop {
             let (stream, remote_addr) = match self.listener.accept().await {
                 Ok((stream, addr)) => (stream, addr),
@@ -178,13 +180,13 @@ impl WebSocketListener {
             log::debug!("Got new possible websocket connection from {}", remote_addr);
 
             let local_addr = stream.local_addr()?;
-            let endpoint = endpoint.clone();
+            let transports = transports.clone();
             // Let's spawn the handling of each connection in a separate task.
             tokio::spawn(async move {
                 let io = TokioIo::new(stream);
 
                 let service = service_fn(move |req| {
-                    Self::upgrade_to_websocket(req, endpoint.clone(), remote_addr, local_addr)
+                    Self::upgrade_to_websocket(req, transports.clone(), remote_addr, local_addr)
                 });
 
                 let conn = http1::Builder::new()
@@ -200,7 +202,7 @@ impl WebSocketListener {
 
     async fn upgrade_to_websocket(
         request: Request<Incoming>,
-        endpoint: Endpoint,
+        transports: TransportLayer,
         remote_addr: SocketAddr,
         local_addr: SocketAddr,
     ) -> StdResult<Response<BytesBody>, Infallible> {
@@ -248,7 +250,7 @@ impl WebSocketListener {
                     let ws_stream =
                         WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await;
                     if let Err(err) =
-                        Self::on_upgrade_completed(endpoint, remote_addr, local_addr, ws_stream)
+                        Self::on_upgrade_completed(transports, remote_addr, local_addr, ws_stream)
                             .await
                     {
                         log::error!("Error on WebSocket: {:#?}", err);
@@ -278,7 +280,7 @@ impl WebSocketListener {
     }
 
     async fn on_upgrade_completed(
-        endpoint: Endpoint,
+        transports: TransportLayer,
         peer_addr: SocketAddr,
         local_addr: SocketAddr,
         ws_stream: WebSocketStream<TokioIo<Upgraded>>,
@@ -294,7 +296,7 @@ impl WebSocketListener {
         let transport = Transport::new(websocket);
 
         // Handle connection.
-        handle_ws_connection(peer_addr, endpoint, transport, ws_stream, rx).await;
+        handle_ws_connection(peer_addr, transports, transport, ws_stream, rx).await;
 
         Ok(())
     }
@@ -302,7 +304,7 @@ impl WebSocketListener {
 
 async fn handle_ws_connection<S>(
     addr: SocketAddr,
-    endpoint: Endpoint,
+    transports: TransportLayer,
     transport: Transport,
     stream: WebSocketStream<S>,
     mut rx: mpsc::Receiver<WsMessage>,
@@ -313,7 +315,7 @@ async fn handle_ws_connection<S>(
 
     let (mut send, mut recv) = stream.split();
 
-    endpoint.transports().register_transport(transport.clone());
+    transports.register_transport(transport.key(), transport.clone());
 
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -346,11 +348,11 @@ async fn handle_ws_connection<S>(
         let transport = transport.clone();
         let msg = TransportMessage { transport, packet };
 
-        endpoint.receive_transport_message(msg);
+        transports.receive_message(msg);
     }
 
     log::info!("WebSocket connection disconnected: {}", addr);
-    endpoint.transports().remove_transport(&transport.key());
+    transports.remove_transport(&transport.key());
     send_task.abort();
 }
 

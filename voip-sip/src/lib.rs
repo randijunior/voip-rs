@@ -1,4 +1,3 @@
-#![warn(missing_docs)]
 //! # voip-sip
 //!
 //! A rust library that implements the SIP protocol.
@@ -8,6 +7,7 @@ pub mod dialog;
 pub mod endpoint;
 pub mod message;
 pub(crate) mod parser;
+pub mod resolver;
 pub mod transaction;
 pub(crate) mod transport;
 

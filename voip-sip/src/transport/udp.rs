@@ -5,16 +5,9 @@ use std::sync::Arc;
 
 use tokio::net::{ToSocketAddrs, UdpSocket};
 
-use super::{Packet, SipTransport, SipTransportType, Transport};
-use crate::endpoint::Endpoint;
+use super::{Packet, SipTransport, Transport, TransportProtocol};
 use crate::error::Result;
-use crate::transport::{KEEPALIVE_REQUEST, KEEPALIVE_RESPONSE, TransportMessage};
-
-#[derive(Debug)]
-struct UdpInner {
-    sock: UdpSocket,
-    addr: SocketAddr,
-}
+use crate::transport::{KEEPALIVE_REQUEST, KEEPALIVE_RESPONSE, TransportLayer, TransportMessage};
 
 /// UDP transport implementation.
 ///
@@ -27,6 +20,12 @@ struct UdpInner {
 #[derive(Debug, Clone)]
 pub struct UdpTransport {
     inner: Arc<UdpInner>,
+}
+
+#[derive(Debug)]
+struct UdpInner {
+    sock: UdpSocket,
+    addr: SocketAddr,
 }
 
 impl UdpTransport {
@@ -44,7 +43,7 @@ impl UdpTransport {
     }
 
     /// Receive UDP datagrams on this transport.
-    pub(crate) async fn receive_datagram(self, endpoint: Endpoint) -> Result<()> {
+    pub(crate) async fn receive_datagram(self, transports: TransportLayer) -> Result<()> {
         let udp_tp = Transport::new(self.clone());
         // Buffer to recv packet.
         let mut buf = vec![0u8; 4000];
@@ -81,7 +80,7 @@ impl UdpTransport {
                 packet,
             };
 
-            endpoint.receive_transport_message(msg);
+            transports.receive_message(msg);
         }
     }
 }
@@ -96,8 +95,8 @@ impl SipTransport for UdpTransport {
         None
     }
 
-    fn transport_type(&self) -> SipTransportType {
-        SipTransportType::Udp
+    fn protocol(&self) -> TransportProtocol {
+        TransportProtocol::Udp
     }
 
     fn local_addr(&self) -> SocketAddr {

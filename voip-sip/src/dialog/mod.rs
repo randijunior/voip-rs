@@ -2,7 +2,7 @@ use tokio::sync::mpsc;
 
 pub mod ua;
 
-pub use ua::UaModule;
+pub use ua::Ua;
 
 use crate::endpoint::Endpoint;
 use crate::error::{DialogError, Result};
@@ -65,7 +65,7 @@ impl Dialog {
         let local_cseq = None;
 
         let route_set = RouteSet::from_headers(&request.request.headers);
-        let secure = request.incoming_info.transport.transport.is_secure()
+        let secure = request.incoming_info.transport_info.transport.is_secure()
             && request.request.req_line.uri.scheme == Scheme::Sips;
 
         let dialog_id = DialogId {
@@ -116,12 +116,12 @@ impl Dialog {
                     && !matches!(request.req_line.method, Method::Ack | Method::Cancel)
                 {
                     let st_text = ReasonPhrase::from("Invalid Cseq");
-                    let mut response = self.endpoint.create_response(
+                    let mut response = self.endpoint.create_outgoing_response(
                         &request,
                         StatusCode::ServerInternalError,
                         Some(st_text),
                     );
-                    self.endpoint.send_response(&mut response).await?;
+                    self.endpoint.send_outgoing_response(&mut response).await?;
                     return Ok(Some(request));
                 }
                 self.remote_cseq = request_cseq;

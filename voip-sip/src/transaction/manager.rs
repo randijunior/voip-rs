@@ -13,11 +13,11 @@ use crate::{Endpoint, RFC3261_BRANCH_ID};
 type TransactionEntry = mpsc::Sender<TransactionMessage>;
 
 #[derive(Default)]
-pub struct TsxModule {
+pub struct Transactions {
     transactions: Mutex<rustc_hash::FxHashMap<TransactionKey, TransactionEntry>>,
 }
 
-impl TsxModule {
+impl Transactions {
     #[inline]
     pub(crate) fn add_transaction(&self, key: TransactionKey, entry: TransactionEntry) {
         let mut map = self.transactions.lock().expect("Lock failed");
@@ -41,7 +41,7 @@ impl TsxModule {
 }
 
 #[async_trait::async_trait]
-impl endpoint::Module for TsxModule {
+impl endpoint::Module for Transactions {
     fn name(&self) -> &'static str {
         "tsx-module"
     }

@@ -19,7 +19,7 @@ impl IncomingRequest {
     pub fn encoded_str(&self) -> &str {
         // SAFETY: An parsed IncomingRequest is aways a correctly
         // encoded UTF-8 string.
-        unsafe { std::str::from_utf8_unchecked(&self.incoming_info.transport.packet.data) }
+        unsafe { std::str::from_utf8_unchecked(&self.incoming_info.transport_info.packet.data) }
     }
 }
 
@@ -52,7 +52,7 @@ pub struct IncomingInfo {
     /// The mandatory headers extracted from the message.
     pub mandatory_headers: MandatoryHeaders,
     /// The received transport packet.
-    pub transport: super::TransportMessage,
+    pub transport_info: super::TransportMessage,
 }
 
 /// Represents the mandatory headers that every SIP message must contain.

@@ -13,7 +13,11 @@ use crate::transport::incoming::{IncomingInfo, IncomingRequest, MandatoryHeaders
 use crate::transport::{Packet, Transport, TransportMessage};
 
 pub async fn create_test_endpoint() -> Endpoint {
-    EndpointBuilder::new().build().await.unwrap()
+    EndpointBuilder::new()
+        .with_udp_addr("127.0.0.1:0")
+        .build()
+        .await
+        .unwrap()
 }
 
 fn create_test_headers(method: Method) -> Headers {
@@ -46,10 +50,10 @@ pub fn create_test_request(method: Method, transport: Transport) -> IncomingRequ
     let request = Request::with_headers(method, uri, headers);
     let packet = Packet::new(Bytes::new(), transport.local_addr());
 
-    let transport = TransportMessage { packet, transport };
+    let transport_info = TransportMessage { packet, transport };
 
     let incoming_info = IncomingInfo {
-        transport,
+        transport_info,
         mandatory_headers,
     };
 
@@ -162,15 +166,21 @@ pub mod transaction {
     impl FakeUAS {
         pub async fn respond(&self, code: StatusCode) {
             let mandatory_headers = self.request.incoming_info.mandatory_headers.clone();
-            let outgoing = self.endpoint.create_response(&self.request, code, None);
-            let packet = Packet::new(outgoing.encoded, outgoing.target_info.target);
+            let outgoing = self
+                .endpoint
+                .create_outgoing_response(&self.request, code, None);
 
-            let transport = TransportMessage {
+            let packet = Packet::new(
+                outgoing.encoded,
+                self.request.incoming_info.transport_info.packet.source,
+            );
+
+            let transport_info = TransportMessage {
                 packet,
-                transport: outgoing.target_info.transport,
+                transport: self.request.incoming_info.transport_info.transport.clone(),
             };
             let info = IncomingInfo {
-                transport,
+                transport_info,
                 mandatory_headers,
             };
 
@@ -278,7 +288,7 @@ pub mod transaction {
             let endpoint = create_test_endpoint().await;
             let incoming = create_test_request(method, transport.clone());
 
-            let destination = incoming.incoming_info.transport.packet.source;
+            let destination = incoming.incoming_info.transport_info.packet.source;
             let request = incoming.request;
 
             Self {
@@ -314,7 +324,7 @@ pub mod transaction {
             let endpoint = create_test_endpoint().await;
             let request = create_test_request(method, transport_impl.clone());
 
-            let destination = request.incoming_info.transport.packet.source;
+            let destination = request.incoming_info.transport_info.packet.source;
 
             let target = (transport_impl, destination);
 
@@ -414,25 +424,25 @@ pub mod transport {
 
     use crate::message::{Request, SipMessage};
     use crate::parser::SipParser;
-    use crate::transport::{SipTransport, SipTransportType};
+    use crate::transport::{SipTransport, TransportProtocol};
 
     /// A mock transport, for testing purposes
     #[derive(Clone)]
     pub struct MockTransport {
         sent: Arc<Mutex<Vec<(Vec<u8>, SocketAddr)>>>,
         addr: SocketAddr,
-        tp_type: SipTransportType,
+        protocol: TransportProtocol,
         fail_at: Option<usize>,
     }
 
     impl MockTransport {
-        pub fn with_transport_type(tp_type: SipTransportType) -> Self {
+        pub fn with_transport_type(protocol: TransportProtocol) -> Self {
             let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
-            let port = tp_type.default_port();
+            let port = protocol.default_port();
             let mock = Self {
                 sent: Default::default(),
                 addr: SocketAddr::new(ip, port),
-                tp_type,
+                protocol,
                 fail_at: None,
             };
 
@@ -440,15 +450,15 @@ pub mod transport {
         }
 
         pub fn new_udp() -> Self {
-            Self::with_transport_type(SipTransportType::Udp)
+            Self::with_transport_type(TransportProtocol::Udp)
         }
 
         pub fn new_tcp() -> Self {
-            Self::with_transport_type(SipTransportType::Tcp)
+            Self::with_transport_type(TransportProtocol::Tcp)
         }
 
         pub fn new_tls() -> Self {
-            Self::with_transport_type(SipTransportType::Tls)
+            Self::with_transport_type(TransportProtocol::Tls)
         }
 
         pub fn sent_count(&self) -> usize {
@@ -499,8 +509,8 @@ pub mod transport {
             None
         }
 
-        fn transport_type(&self) -> SipTransportType {
-            self.tp_type
+        fn protocol(&self) -> TransportProtocol {
+            self.protocol
         }
 
         fn local_addr(&self) -> SocketAddr {
@@ -508,11 +518,11 @@ pub mod transport {
         }
 
         fn is_reliable(&self) -> bool {
-            self.tp_type.is_reliable()
+            self.protocol.is_reliable()
         }
 
         fn is_secure(&self) -> bool {
-            self.tp_type.is_secure()
+            self.protocol.is_secure()
         }
     }
 }

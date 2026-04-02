@@ -74,12 +74,12 @@ impl ServerTransaction {
     /// This is a shortcut for:
     ///
     /// ```no_run
-    /// let response = transaction.create_response(status, None);
+    /// let response = transaction.create_outgoing_response(status, None);
     /// transaction.send_provisional_response(response).await;
     /// ```
     /// See [`send_provisional_response`](Self::send_provisional_response) for more info.
     pub async fn send_provisional_status(&mut self, status: StatusCode) -> Result<()> {
-        let response = self.create_response(status, None);
+        let response = self.create_outgoing_response(status, None);
 
         self.send_provisional_response(response).await?;
 
@@ -123,12 +123,12 @@ impl ServerTransaction {
     /// This is a shortcut for:
     ///
     /// ```no_run
-    /// let response = transaction.create_response(status, None);
+    /// let response = transaction.create_outgoing_response(status, None);
     /// transaction.send_final_response(response).await;
     /// ```
     /// See [`send_final_response`](Self::send_final_response) for more info.
     pub async fn send_final_status(self, status: StatusCode) -> Result<()> {
-        let response = self.create_response(status, None);
+        let response = self.create_outgoing_response(status, None);
 
         self.send_final_response(response).await?;
 
@@ -181,7 +181,7 @@ impl ServerTransaction {
                     tokio::select! {
                         _ = timer_g.as_mut() => {
                            let _res =  self.endpoint
-                            .send_response(&mut response)
+                            .send_outgoing_response(&mut response)
                             .await;
                         retrans_count += 1;
 
@@ -206,7 +206,7 @@ impl ServerTransaction {
                                 return;
                             }
                             let _res =  self.endpoint
-                            .send_response(&mut response)
+                            .send_outgoing_response(&mut response)
                             .await;
                         }
                     }
@@ -242,12 +242,13 @@ impl ServerTransaction {
         Ok(())
     }
 
-    pub fn create_response(
+    pub fn create_outgoing_response(
         &self,
         code: StatusCode,
         phrase: Option<ReasonPhrase>,
     ) -> OutgoingResponse {
-        self.endpoint.create_response(&self.request, code, phrase)
+        self.endpoint
+            .create_outgoing_response(&self.request, code, phrase)
     }
 
     pub(crate) fn transaction_key(&self) -> &TransactionKey {
@@ -266,12 +267,16 @@ impl ServerTransaction {
     }
 
     async fn send_response(&self, response: &mut OutgoingResponse) -> Result<()> {
-        self.endpoint.send_response(response).await?;
+        self.endpoint.send_outgoing_response(response).await?;
         Ok(())
     }
 
     fn is_reliable(&self) -> bool {
-        self.request.incoming_info.transport.transport.is_reliable()
+        self.request
+            .incoming_info
+            .transport_info
+            .transport
+            .is_reliable()
     }
 
     fn spawn_retransmit_provisional_task(
@@ -287,6 +292,7 @@ impl ServerTransaction {
         let mut state_rx = self.state_machine.subscribe_state();
         let (provisional_tx, mut tu_provisional_rx) = mpsc::unbounded_channel();
 
+        let endpoint_clone = self.endpoint.clone();
         let join_handle = tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -300,10 +306,7 @@ impl ServerTransaction {
                         response = new_tu_provisional;
                     }
                     Some(_msg) = receiver.recv() => {
-                           if let Err(err) = response
-                           .target_info
-                           .transport
-                           .send_msg(&response.encoded, &response.target_info.target)
+                           if let Err(err) = endpoint_clone.send_outgoing_response(&mut response)
                            .await {
                             log::error!("Failed to retransmit: {}", err);
                            }

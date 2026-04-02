@@ -2,8 +2,6 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use std::{io, mem};
 
-use utils::DnsResolver;
-
 use crate::endpoint::EndpointInner;
 use crate::endpoint::module::{Module, Modules};
 use crate::message::headers::{Accept, Allow, Header, Supported};
@@ -11,13 +9,12 @@ use crate::message::method::Method;
 use crate::transport::tcp::TcpListener;
 use crate::transport::udp::UdpTransport;
 use crate::transport::ws::WebSocketListener;
-use crate::transport::{SipTransport, Transport, TransportModule};
+use crate::transport::{SipTransport, Transport, TransportLayer};
 use crate::{Endpoint, MediaType, Result};
 
 /// Builder for creating a new SIP `Endpoint`.
 pub struct EndpointBuilder {
     name: String,
-    resolver: DnsResolver,
     modules: Modules,
     allow: Allow,
     accept: Accept,
@@ -44,7 +41,6 @@ impl EndpointBuilder {
     pub fn new() -> Self {
         EndpointBuilder {
             name: String::new(),
-            resolver: DnsResolver::default(),
             modules: Modules::default(),
             accept: Accept::default(),
             allow: Allow::default(),
@@ -121,19 +117,27 @@ impl EndpointBuilder {
             Header::Accept(self.accept)
         ];
 
-        let endpoint = Endpoint {
-            inner: Arc::new(EndpointInner {
-                transport: TransportModule::new(),
-                name: self.name,
-                capabilities,
-                resolver: self.resolver,
-                modules,
-            }),
+        let endpoint = {
+            let endpoint = Arc::new_cyclic(|me: &std::sync::Weak<EndpointInner>| {
+                let handle = super::WeakEndpointHandle(me.clone());
+                let transport = TransportLayer::new(handle);
+
+                EndpointInner {
+                    transport,
+                    name: self.name,
+                    capabilities,
+                    modules,
+                }
+            });
+
+            Endpoint { inner: endpoint }
         };
 
         let mut tcp_resolvers = mem::take(&mut self.tcp);
         let mut udp_resolvers = mem::take(&mut self.udp);
         let mut ws_resolvers = mem::take(&mut self.ws);
+
+        let transports = &endpoint.inner.transport;
 
         while let Some(resolver) = tcp_resolvers.pop() {
             for addr in resolver.resolve()? {
@@ -142,7 +146,7 @@ impl EndpointBuilder {
                     "SIP TCP listener ready for incoming connections at: {}",
                     tcp.local_addr()
                 );
-                tokio::spawn(tcp.accept_clients(endpoint.clone()));
+                tokio::spawn(tcp.accept_clients(transports.clone()));
             }
         }
 
@@ -150,11 +154,9 @@ impl EndpointBuilder {
             for addr in resolver.resolve()? {
                 let udp = UdpTransport::bind(addr).await?;
                 log::info!("SIP UDP transport started, bound to: {}", udp.local_addr());
-                endpoint
-                    .transports()
-                    .register_transport(Transport::new(udp.clone()));
+                transports.register_transport(udp.key(), Transport::new(udp.clone()));
 
-                tokio::spawn(udp.receive_datagram(endpoint.clone()));
+                tokio::spawn(udp.receive_datagram(transports.clone()));
             }
         }
 
@@ -165,7 +167,7 @@ impl EndpointBuilder {
                     "SIP WS listener ready for incoming connections at: {}",
                     ws.local_addr()
                 );
-                tokio::spawn(ws.accept_clients(endpoint.clone()));
+                tokio::spawn(ws.accept_clients(transports.clone()));
             }
         }
 

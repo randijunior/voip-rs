@@ -61,7 +61,7 @@ impl ClientTransaction {
             Some(via) => via,
             None => {
                 let sent_by = outgoing.target_info.transport.local_addr().into();
-                let transport = outgoing.target_info.transport.transport_type();
+                let transport = outgoing.target_info.transport.protocol();
                 let branch = crate::generate_branch();
                 let via = Via::new_with_transport(transport, sent_by, Some(branch));
 
@@ -159,7 +159,7 @@ impl ClientTransaction {
                 }
             }
             State::Initial | State::Calling | State::Trying => {
-                match timeout_at(self.timeout.into(), self.recv_provisional_msg()).await {
+                match timeout_at(self.timeout, self.recv_provisional_msg()).await {
                     Ok(Some(msg)) => {
                         self.state_machine.set_state(State::Proceeding);
                         return Ok(Some(msg));

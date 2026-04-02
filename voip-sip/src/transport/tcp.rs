@@ -11,10 +11,10 @@ use tokio_util::codec::FramedRead;
 
 use super::decode::{FramedMessage, StreamingDecoder};
 use super::{
-    KEEPALIVE_RESPONSE, Packet, SipTransport, SipTransportType, Transport, TransportMessage,
+    KEEPALIVE_RESPONSE, Packet, SipTransport, Transport, TransportMessage, TransportProtocol,
 };
-use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
+use crate::transport::TransportLayer;
 
 type TcpFrameRead = FramedRead<ReadHalf<TcpStream>, StreamingDecoder>;
 type TcpAccept = (TcpStream, SocketAddr);
@@ -33,7 +33,7 @@ pub struct TcpTransport {
 }
 
 impl TcpTransport {
-    pub(crate) async fn connect<A>(addr: A, endpoint: &Endpoint) -> Result<Transport>
+    pub(crate) async fn connect<A>(addr: A, transports: &TransportLayer) -> Result<Transport>
     where
         A: ToSocketAddrs + Send,
     {
@@ -55,12 +55,12 @@ impl TcpTransport {
         });
 
         // TODO: Start keep-alive timer.
-        endpoint.transports().register_transport(transport.clone());
+        transports.register_transport(transport.key(), transport.clone());
 
-        let endpoint = endpoint.clone();
+        let transports = transports.clone();
         let tcp = transport.clone();
         tokio::spawn(async move {
-            if let Err(err) = tcp_read(read_half, remote_addr, tcp, endpoint).await {
+            if let Err(err) = tcp_read(read_half, remote_addr, tcp, transports).await {
                 log::warn!("An error occured; error = {:#}", err);
             }
         });
@@ -86,8 +86,8 @@ impl SipTransport for TcpTransport {
         Some(self.remote_addr)
     }
 
-    fn transport_type(&self) -> SipTransportType {
-        SipTransportType::Tcp
+    fn protocol(&self) -> TransportProtocol {
+        TransportProtocol::Tcp
     }
 
     fn local_addr(&self) -> SocketAddr {
@@ -129,16 +129,19 @@ impl TcpListener {
     }
 
     /// Accepts incoming TCP connections and handles them asynchronously.
-    pub async fn accept_clients(self, endpoint: Endpoint) -> Result<()> {
+    pub async fn accept_clients(self, transports: TransportLayer) -> Result<()> {
         while let Ok((stream, addr)) = self.listener.accept().await {
             log::debug!("Got incoming TCP connection from {}", addr);
             // Spawn a new task to handle the connection.
-            tokio::spawn(Self::on_accept_complete((stream, addr), endpoint.clone()));
+            tokio::spawn(Self::on_accept_complete((stream, addr), transports.clone()));
         }
         Ok(())
     }
 
-    async fn on_accept_complete((stream, addr): TcpAccept, endpoint: Endpoint) -> Result<()> {
+    async fn on_accept_complete(
+        (stream, addr): TcpAccept,
+        transports: TransportLayer,
+    ) -> Result<()> {
         let bind_addr = stream.local_addr()?;
         let remote_addr = stream.peer_addr()?;
 
@@ -153,9 +156,9 @@ impl TcpListener {
             remote_addr,
             write_half,
         });
-        endpoint.transports().register_transport(transport.clone());
+        transports.register_transport(transport.key(), transport.clone());
 
-        if let Err(err) = tcp_read(read_half, addr, transport, endpoint).await {
+        if let Err(err) = tcp_read(read_half, addr, transport, transports).await {
             log::warn!("An error occured; error = {:#}", err);
         }
 
@@ -167,7 +170,7 @@ async fn tcp_read(
     mut framed: TcpFrameRead,
     peer: SocketAddr,
     transport: Transport,
-    endpoint: Endpoint,
+    transports: TransportLayer,
 ) -> Result<()> {
     loop {
         match framed.next().await {
@@ -176,18 +179,18 @@ async fn tcp_read(
                 let transport = transport.clone();
                 let msg = TransportMessage { transport, packet };
 
-                endpoint.receive_transport_message(msg);
+                transports.receive_message(msg);
             }
             Some(Ok(FramedMessage::KeepaliveRequest)) => {
                 transport.send_msg(KEEPALIVE_RESPONSE, &peer).await?;
             }
-            Some(Ok(FramedMessage::KeepaliveResponse)) => {}
+            Some(Ok(FramedMessage::KeepaliveResponse)) => (),
             Some(Err(err)) => {
                 return Err(Error::Io(err));
             }
             None => {
                 log::info!("TCP connection disconnected: {}", peer);
-                endpoint.transports().remove_transport(&transport.key());
+                transports.remove_transport(&transport.key());
                 break;
             }
         };

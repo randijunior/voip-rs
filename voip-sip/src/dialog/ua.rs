@@ -10,11 +10,11 @@ use crate::message::method::Method;
 use crate::transport::incoming::IncomingRequest;
 
 #[derive(Default)]
-pub struct UaModule {
+pub struct Ua {
     dialogs: Mutex<HashMap<DialogId, mpsc::Sender<DialogMessage>>>,
 }
 
-impl UaModule {
+impl Ua {
     // pub async fn handle_response(&self, response: IncomingResponse) -> Option<IncomingResponse> {
     //     let Some(sender) = self.get_dialog_from_response(&response) else {
     //         return Some(response);
@@ -58,9 +58,9 @@ impl UaModule {
 }
 
 #[async_trait::async_trait]
-impl endpoint::Module for UaModule {
+impl endpoint::Module for Ua {
     fn name(&self) -> &'static str {
-        "dialog-module"
+        "dialog-ua"
     }
 
     async fn on_receive_request(&self, mut request: ReceivedRequest<'_>, _: &Endpoint) {

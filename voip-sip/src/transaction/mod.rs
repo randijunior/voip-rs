@@ -1,10 +1,9 @@
-#![warn(missing_docs)]
 //! Transaction Layer.
 
 use std::time::Duration;
 
 pub use client::ClientTransaction;
-pub use manager::TsxModule;
+pub use manager::Transactions;
 pub use server::ServerTransaction;
 
 use crate::transport::incoming::{IncomingRequest, IncomingResponse};

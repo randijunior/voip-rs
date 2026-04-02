@@ -1,3 +1,4 @@
+use core::fmt;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::ops;
@@ -6,8 +7,10 @@ use bytes::{BufMut, Bytes, BytesMut};
 
 use crate::error::Result;
 use crate::message::headers::ContentLength;
+use crate::message::sip_uri::HostPort;
 use crate::message::{Request, Response, SipBody};
 use crate::parser::HeaderParse;
+use crate::transport::{Transport, TransportProtocol};
 
 /// This type represents an outbound SIP request.
 pub struct OutgoingRequest {
@@ -17,6 +20,33 @@ pub struct OutgoingRequest {
     pub target_info: TargetTransportInfo,
     /// Message encoded representation.
     pub encoded: Bytes,
+}
+
+/// This type represents an outgoing SIP response.
+pub struct OutgoingResponse {
+    /// The SIP response.
+    pub response: Response,
+    /// Metadata about how the message will be sent.
+    pub dest_info: OutgoingDestInfo,
+    /// Message encoded representation.
+    pub encoded: Bytes,
+}
+
+pub struct OutgoingDestInfo {
+    pub host_port: (HostPort, TransportProtocol),
+    pub transport: Option<(Transport, SocketAddr)>,
+}
+
+impl fmt::Display for OutgoingDestInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some((_, addr)) = self.transport {
+            write!(f, "{addr}")?;
+        } else {
+            write!(f, "{}", self.host_port.0.host)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl ops::Deref for OutgoingRequest {
@@ -30,16 +60,6 @@ impl ops::DerefMut for OutgoingRequest {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.request
     }
-}
-
-/// This type represents an outgoing SIP response.
-pub struct OutgoingResponse {
-    /// The SIP response.
-    pub response: Response,
-    /// Metadata about how the message will be sent.
-    pub target_info: TargetTransportInfo,
-    /// Message encoded representation.
-    pub encoded: Bytes,
 }
 
 impl OutgoingResponse {
@@ -62,14 +82,13 @@ impl ops::DerefMut for OutgoingResponse {
         &mut self.response
     }
 }
-
 /// Outgoing message info.
 #[derive(Clone)]
 pub struct TargetTransportInfo {
     /// The socket this message should be sent to.
     pub target: SocketAddr,
     /// The transport to use for sending the message.
-    pub transport: super::Transport,
+    pub transport: Transport,
 }
 
 /// Trait for converting a type into into a buffer.

@@ -50,6 +50,9 @@ pub enum Error {
     #[error("Fmt Error: {0}")]
     FmtError(std::fmt::Error),
 
+    #[error("Resolve Error: {0}")]
+    ResolveError(#[from] hickory_resolver::ResolveError),
+
     #[error("Internal error: {0}")]
     Other(String),
 }

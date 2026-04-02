@@ -4,7 +4,9 @@ use crate::error;
 use crate::message::method::Method;
 use crate::message::param::{Param, Params};
 use crate::parser::SipParser;
-use crate::transport::SipTransportType;
+use crate::transport::TransportProtocol;
+
+type Port = u16;
 
 /// A SIP uri.
 ///
@@ -44,7 +46,7 @@ pub struct Uri {
     /// The method parameter.
     pub method_param: Option<Method>,
     /// The transport parameter.
-    pub transport_param: Option<SipTransportType>,
+    pub transport_param: Option<TransportProtocol>,
     /// The ttl parameter.
     pub ttl_param: Option<u8>,
     /// The lr parameter.
@@ -78,12 +80,12 @@ pub struct UserInfo {
 
 /// Represents a combination of a host (domain or IP address) and an optional
 /// port.
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Hash)]
 pub struct HostPort {
     /// The host part, which may be a domain name or an IP address.
     pub host: Host,
     /// The optional port number.
-    pub port: Option<u16>,
+    pub port: Option<Port>,
 }
 
 /// Represents the host part of a URI, which can be either a
@@ -91,14 +93,14 @@ pub struct HostPort {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Host {
     /// A domain name, such as `example.com`.
-    DomainName(DomainName),
+    HostName(HostName),
     /// An IP address, either IPv4 or IPv6.
     IpAddr(net::IpAddr),
 }
 
 /// Represents a domain name in a SIP URI.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub struct DomainName(borrow::Cow<'static, str>);
+pub struct HostName(borrow::Cow<'static, str>);
 
 /// Represents the header parameters of a SIP URI.
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
@@ -157,7 +159,7 @@ impl SipUri {
     }
 
     /// Returns the `transport` parameter.
-    pub fn transport_param(&self) -> Option<SipTransportType> {
+    pub fn transport_param(&self) -> Option<TransportProtocol> {
         match self {
             SipUri::Uri(uri) => uri.transport_param,
             SipUri::NameAddr(addr) => addr.uri.transport_param,
@@ -359,7 +361,7 @@ impl UriBuilder {
     }
 
     /// Sets the transport parameter of the uri.
-    pub fn transport_param(mut self, param: SipTransportType) -> Self {
+    pub fn transport_param(mut self, param: TransportProtocol) -> Self {
         self.uri.transport_param = Some(param);
         self
     }
@@ -453,16 +455,10 @@ impl fmt::Display for NameAddr {
     }
 }
 
-impl From<&str> for DomainName {
-    fn from(name: &str) -> Self {
-        Self::new(borrow::Cow::Owned(name.to_owned()))
-    }
-}
-
-impl DomainName {
-    /// Creates a new `DomainName`.
+impl HostName {
+    /// Creates a new `HostName`.
     pub fn new(name: borrow::Cow<'static, str>) -> Self {
-        DomainName(name)
+        HostName(name)
     }
 
     /// Returns the string representation of the domain name.
@@ -471,17 +467,23 @@ impl DomainName {
     }
 }
 
-impl fmt::Display for DomainName {
+impl From<&str> for HostName {
+    fn from(name: &str) -> Self {
+        Self::new(borrow::Cow::Owned(name.to_owned()))
+    }
+}
+
+impl fmt::Display for HostName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
 impl From<net::SocketAddr> for HostPort {
-    fn from(value: net::SocketAddr) -> Self {
+    fn from(socket_addr: net::SocketAddr) -> Self {
         Self {
-            host: Host::IpAddr(value.ip()),
-            port: value.port().into(),
+            host: Host::IpAddr(socket_addr.ip()),
+            port: Some(socket_addr.port()),
         }
     }
 }
@@ -489,7 +491,7 @@ impl From<net::SocketAddr> for HostPort {
 impl fmt::Display for Host {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Host::DomainName(domain) => write!(f, "{domain}"),
+            Host::HostName(domain) => write!(f, "{domain}"),
             Host::IpAddr(ip_addr) => write!(f, "{ip_addr}"),
         }
     }
@@ -503,9 +505,17 @@ impl Host {
     /// formatting.
     pub fn as_str(&self) -> borrow::Cow<'_, str> {
         match self {
-            Host::DomainName(host) => borrow::Cow::Borrowed(host.as_str()),
+            Host::HostName(host) => borrow::Cow::Borrowed(host.as_str()),
             Host::IpAddr(ip_addr) => borrow::Cow::Owned(ip_addr.to_string()),
         }
+    }
+
+    pub fn is_domain_name(&self) -> bool {
+        matches!(self, Host::HostName(_))
+    }
+
+    pub fn is_ip_addr(&self) -> bool {
+        !self.is_domain_name()
     }
 }
 
@@ -516,8 +526,20 @@ impl str::FromStr for Host {
         if let Ok(ip_addr) = s.parse::<net::IpAddr>() {
             Ok(Host::IpAddr(ip_addr))
         } else {
-            Ok(Host::DomainName(DomainName::from(s)))
+            Ok(Host::HostName(HostName::from(s)))
         }
+    }
+}
+
+impl From<net::IpAddr> for Host {
+    fn from(ip_addr: net::IpAddr) -> Self {
+        Self::IpAddr(ip_addr)
+    }
+}
+
+impl Default for Host {
+    fn default() -> Self {
+        Self::HostName(HostName::new("localhost".into()))
     }
 }
 
@@ -545,7 +567,7 @@ impl str::FromStr for HostPort {
 impl fmt::Display for HostPort {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.host {
-            Host::DomainName(domain) => f.write_str(&domain.0)?,
+            Host::HostName(domain) => f.write_str(&domain.0)?,
             Host::IpAddr(ip_addr) => write!(f, "{}", ip_addr)?,
         }
         if let Some(port) = self.port {
@@ -558,15 +580,6 @@ impl fmt::Display for HostPort {
 impl From<Host> for HostPort {
     fn from(host: Host) -> Self {
         Self { host, port: None }
-    }
-}
-
-impl Default for HostPort {
-    fn default() -> Self {
-        Self {
-            host: Host::IpAddr(net::IpAddr::V4(net::Ipv4Addr::LOCALHOST)),
-            port: Some(5060),
-        }
     }
 }
 

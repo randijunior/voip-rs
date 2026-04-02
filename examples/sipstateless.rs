@@ -2,14 +2,14 @@ use std::error::Error;
 
 use tracing::Level;
 use tracing_subscriber::fmt::time::ChronoLocal;
-use voip::sip::endpoint::{Endpoint, Module, ReceivedRequest};
+use voip::sip::endpoint::{self, Endpoint, ReceivedRequest};
 use voip::sip::message::method::Method;
 use voip::sip::message::status_code::StatusCode;
 
 pub struct SipStateless;
 
 #[async_trait::async_trait]
-impl Module for SipStateless {
+impl endpoint::Module for SipStateless {
     fn name(&self) -> &'static str {
         "sip-stateless"
     }
@@ -18,8 +18,11 @@ impl Module for SipStateless {
         let request = received.take();
 
         if request.req_line.method != Method::Ack {
+            let mut response =
+                endpoint.create_outgoing_response(&request, StatusCode::NotImplemented, None);
+
             endpoint
-                .respond(&request, StatusCode::NotImplemented, None)
+                .send_outgoing_response(&mut response)
                 .await
                 .unwrap();
         }

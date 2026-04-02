@@ -346,7 +346,9 @@ impl<'buf> SipParser<'buf> {
         let token = self.scanner.scan_while(is_token);
 
         let method = token.into();
+        self.skip_ws();
         let uri = self.parse_uri(true)?;
+        self.skip_ws();
         self.parse_sip_version()?;
 
         self.skip_newline();
@@ -415,7 +417,7 @@ impl<'buf> SipParser<'buf> {
                 }
                 param::TRANSPORT_PARAM => {
                     uri.transport_param = pvalue
-                        .map(transport::SipTransportType::from_str)
+                        .map(transport::TransportProtocol::from_str)
                         .transpose()
                         .or_else(|_| self.error(Kind::Transport))?;
                     None
@@ -491,7 +493,7 @@ impl<'buf> SipParser<'buf> {
                 if let Ok(ip_addr) = host.parse() {
                     sip_uri::Host::IpAddr(ip_addr)
                 } else {
-                    sip_uri::Host::DomainName(sip_uri::DomainName::from(host))
+                    sip_uri::Host::HostName(sip_uri::HostName::from(host))
                 }
             }
         };
@@ -588,8 +590,8 @@ impl<'buf> SipParser<'buf> {
     }
 
     fn parse_display_name(&mut self) -> Result<Option<sip_uri::DisplayName>> {
-        match self.advance()? {
-            b'"' => {
+        match self.peek() {
+            Some(b'"') => {
                 self.advance()?; // consume '"'
                 let name = self.scanner.scan_while(|b| b != b'"');
                 self.advance()?; // consume closing '"'
@@ -597,7 +599,7 @@ impl<'buf> SipParser<'buf> {
 
                 Ok(Some(sip_uri::DisplayName::new(name)))
             }
-            b'<' => Ok(None), // no display name
+            Some(b'<') => Ok(None), // no display name
             _ => {
                 let name = self.read_token();
                 self.skip_ws();
@@ -694,7 +696,7 @@ impl<'buf> SipParser<'buf> {
                 sip_auth::OPAQUE => digest.opaque = value.map(String::from),
                 sip_auth::QOP => digest.qop = value.map(String::from),
                 sip_auth::NC => digest.nc = value.map(String::from),
-                _ => {} // Ignore unknown parameters
+                _ => (), // Ignore unknown parameters
             }
 
             if self.take_if_eq(b',').is_none() {
