@@ -11,17 +11,17 @@ use crate::message::headers::{self as header, Header};
 use crate::message::{self, method, param, sip_auth, sip_uri, status_code};
 use crate::{macros, transport};
 
-#[inline(always)]
+#[must_use]
 pub fn is_via_param(b: u8) -> bool {
     VIA_PARAM_TAB[b as usize]
 }
 
-#[inline(always)]
+#[must_use]
 pub fn is_host(b: u8) -> bool {
     HOST_TAB[b as usize]
 }
 
-#[inline(always)]
+#[must_use]
 pub fn is_token(b: u8) -> bool {
     TOKEN_TAB[b as usize]
 }
@@ -363,7 +363,7 @@ impl<'buf> SipParser<'buf> {
             .or_else(|_| self.error(Kind::Version))
     }
 
-    #[inline(always)]
+    #[must_use]
     fn parse_header<H: HeaderParse>(&mut self) -> Result<H> {
         <H as HeaderParse>::parse(self)
     }
@@ -858,22 +858,22 @@ impl<'buf> SipParser<'buf> {
     }
 }
 
-#[inline(always)]
+#[must_use]
 fn is_user(b: u8) -> bool {
     USER_TAB[b as usize]
 }
 
-#[inline(always)]
+#[must_use]
 fn is_pass(b: u8) -> bool {
     PASS_TAB[b as usize]
 }
 
-#[inline(always)]
+#[must_use]
 fn is_param(b: u8) -> bool {
     PARAM_TAB[b as usize]
 }
 
-#[inline(always)]
+#[must_use]
 fn is_hdr_uri(b: u8) -> bool {
     HDR_TAB[b as usize]
 }

@@ -59,7 +59,7 @@ pub(crate) fn generate_random_str(n: usize) -> String {
     Alphanumeric.sample_string(&mut rand::rng(), n)
 }
 
-#[inline(always)]
+#[must_use]
 pub(crate) fn is_valid_port(v: u16) -> bool {
     matches!(v, 0..=65535)
 }

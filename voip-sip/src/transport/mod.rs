@@ -33,7 +33,9 @@ use crate::error::{Error, Result};
 use crate::message::SipMessage;
 use crate::message::sip_uri::{HostPort, Scheme, Uri};
 use crate::parser::SipParser;
-use crate::resolver::{DefaultResolver, ServerAddresses, SipDomainResolver, SipHost};
+use crate::resolver::{
+    DefaultResolver, DomainResolver, ServerAddresses, SipDomainResolver, SipHost,
+};
 
 // Core Transport modules
 mod decode;
@@ -56,19 +58,12 @@ pub const MSG_HEADERS_END: &[u8] = b"\r\n\r\n";
 #[derive(Clone)]
 pub struct TransportLayer {
     endpoint: WeakEndpointHandle,
-    resolver: Arc<dyn SipDomainResolver>,
-    transports: Arc<Mutex<rustc_hash::FxHashMap<TransportKey, Transport>>>,
+    resolver: DomainResolver,
+    transports: TransportsMap,
 }
 
-impl Default for TransportLayer {
-    fn default() -> Self {
-        Self {
-            endpoint: Default::default(),
-            resolver: Arc::new(DefaultResolver),
-            transports: Default::default(),
-        }
-    }
-}
+#[derive(Default, Clone)]
+struct TransportsMap(Arc<Mutex<rustc_hash::FxHashMap<TransportKey, Transport>>>);
 
 /// A wrapper around a SIP transport implementation.
 #[derive(Clone)]
@@ -156,56 +151,23 @@ impl TransportLayer {
     pub fn new(endpoint: WeakEndpointHandle) -> Self {
         Self {
             endpoint,
-            transports: Default::default(),
-            resolver: Arc::new(DefaultResolver),
+            transports: TransportsMap::default(),
+            resolver: DomainResolver::from(DefaultResolver),
         }
-    }
-
-    pub fn resolver(&self) -> &Arc<dyn SipDomainResolver> {
-        &self.resolver
     }
 
     /// Add a new transport to the transports.
     pub fn register_transport(&self, key: TransportKey, value: Transport) {
-        let mut transports = self.transports.lock().expect("Lock failed");
-
-        transports.insert(key, value);
+        self.transports.insert(key, value);
     }
 
     /// Remove a transport by its key.
     pub fn remove_transport(&self, key: &TransportKey) {
-        let mut transports = self.transports.lock().expect("Lock failed");
-
-        transports.remove(key);
+        self.transports.remove(key);
     }
 
     pub fn get_transport(&self, key: &TransportKey) -> Option<Transport> {
-        let transports = self.transports.lock().expect("Lock failed");
-
-        if let Some(transport) = transports.get(key) {
-            return Some(transport.clone());
-        }
-
-        if key.protocol.is_unreliable() {
-            let target_ip = key.socket_addr.ip();
-            let target_proto = key.protocol;
-
-            let existing = transports.values().find(|transport| {
-                let ip = transport.local_addr().ip();
-
-                transport.protocol() == target_proto
-                    && matches!(
-                        (ip, target_ip),
-                        (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_))
-                    )
-            });
-
-            if let Some(transport) = existing {
-                return Some(transport.clone());
-            }
-        }
-
-        None
+        self.transports.get(key)
     }
 
     pub async fn select_transport(
@@ -229,6 +191,28 @@ impl TransportLayer {
         } else {
             Err(Error::UnsupportedTransport)
         }
+    }
+
+    // RFC 3263 Section 4
+    // RFC 3263 Section 4.1
+    // RFC 3263 Section 4.2
+    pub async fn resolve_uri(&self, uri: &Uri) -> io::Result<ServerAddresses> {
+        let host = uri.maddr_param.as_ref().unwrap_or(&uri.host_port.host);
+        let transport = match uri.transport_param {
+            Some(transport) => transport,
+            None => TransportProtocol::from_scheme(uri.scheme),
+        };
+        let port = uri.host_port.port;
+        let host_port = HostPort {
+            host: host.to_owned(),
+            port,
+        };
+        let sip_host = SipHost {
+            host_port,
+            protocol: Some(transport),
+        };
+
+        self.resolver.resolve(&sip_host).await
     }
 
     pub(self) fn receive_message(&self, message: TransportMessage) {
@@ -292,23 +276,62 @@ impl TransportLayer {
         }
     }
 
-    // RFC 3263 Section 4
-    // RFC 3263 Section 4.1
-    // RFC 3263 Section 4.2
-    pub async fn resolve_uri(&self, uri: &Uri) -> io::Result<ServerAddresses> {
-        let host = uri.maddr_param.as_ref().unwrap_or(&uri.host_port.host);
-        let transport = match uri.transport_param {
-            Some(transport) => transport,
-            None => TransportProtocol::from_scheme(uri.scheme),
-        };
-        let port = uri.host_port.port;
-        let host = HostPort {
-            host: host.to_owned(),
-            port,
-        };
-        let sip_host = SipHost::new(host, Some(transport));
+    pub fn resolver(&self) -> &DomainResolver {
+        &self.resolver
+    }
+}
 
-        self.resolver.resolve(&sip_host).await
+impl Default for TransportLayer {
+    fn default() -> Self {
+        Self {
+            endpoint: Default::default(),
+            resolver: DomainResolver::from(DefaultResolver),
+            transports: Default::default(),
+        }
+    }
+}
+
+impl TransportsMap {
+    pub fn insert(&self, key: TransportKey, value: Transport) {
+        let mut map = self.0.lock().expect("Lock failed");
+
+        map.insert(key, value);
+    }
+
+    /// Remove a transport by its key.
+    pub fn remove(&self, key: &TransportKey) {
+        let mut map = self.0.lock().expect("Lock failed");
+
+        map.remove(key);
+    }
+
+    pub fn get(&self, key: &TransportKey) -> Option<Transport> {
+        let map = self.0.lock().expect("Lock failed");
+
+        if let Some(transport) = map.get(key) {
+            return Some(transport.clone());
+        }
+
+        if key.protocol.is_unreliable() {
+            let target_ip = key.socket_addr.ip();
+            let target_proto = key.protocol;
+
+            let existing = map.values().find(|transport| {
+                let ip = transport.local_addr().ip();
+
+                transport.protocol() == target_proto
+                    && matches!(
+                        (ip, target_ip),
+                        (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_))
+                    )
+            });
+
+            if let Some(transport) = existing {
+                return Some(transport.clone());
+            }
+        }
+
+        None
     }
 }
 

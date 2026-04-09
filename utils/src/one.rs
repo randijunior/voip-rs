@@ -24,6 +24,17 @@ impl<T> OneOrMore<T> {
 pub type Iter<'a, T> = Either<std::slice::Iter<'a, T>, iter::Once<&'a T>>;
 pub type IntoIter<T> = Either<vec::IntoIter<T>, iter::Once<T>>;
 
+impl<'a, T: 'a> IntoIterator for &'a OneOrMore<T> {
+    type Item = &'a T;
+
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+
 impl<T> IntoIterator for OneOrMore<T> {
     type Item = T;
 

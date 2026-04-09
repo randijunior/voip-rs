@@ -365,7 +365,7 @@ impl<'buf> SdpParser<'buf> {
     }
 }
 
-#[inline(always)]
+#[must_use]
 pub(crate) fn is_token(b: u8) -> bool {
     TOKEN_TAB[b as usize]
 }

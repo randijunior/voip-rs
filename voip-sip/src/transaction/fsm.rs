@@ -63,12 +63,12 @@ impl StateMachine {
         }
     }
 
-    #[inline(always)]
+    #[must_use]
     fn borrow_state_notifier(&self) -> Option<&watch::Sender<State>> {
         self.state_change_notifier.as_ref()
     }
 
-    #[inline(always)]
+    #[must_use]
     fn notify_state_change(&self, state: State) {
         if let Some(sender) = self.borrow_state_notifier() {
             let _result = sender.send(state);

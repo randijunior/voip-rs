@@ -111,7 +111,7 @@ impl<'buf> Scanner<'buf> {
     /// position.
     ///
     /// If the scanner has reached the end of the buffer, it returns `None`.
-    #[inline(always)]
+    #[must_use]
     pub fn peek(&self) -> Option<&u8> {
         self.buffer.get(self.index)
     }
@@ -131,7 +131,7 @@ impl<'buf> Scanner<'buf> {
     /// Get `n` bytes without advance.
     ///
     /// Returns `None` if there are fewer than `n` bytes remaining.
-    #[inline(always)]
+    #[must_use]
     pub fn peek_n(&self, n: usize) -> Option<&[u8]> {
         self.remaining().get(..n)
     }
@@ -188,7 +188,7 @@ impl<'buf> Scanner<'buf> {
 
     /// Call the `predicate` closure for each element in the buffer and read
     /// the scanner while the closure returns `true`.
-    #[inline(always)]
+    #[must_use]
     pub fn scan_while(&mut self, predicate: impl Fn(u8) -> bool) -> &'buf [u8] {
         let start = self.index;
         while let Some(&c) = self.peek() {
@@ -331,7 +331,7 @@ impl<'buf> Scanner<'buf> {
     /// # Returns
     ///
     /// The byte readed.
-    #[inline(always)]
+    #[must_use]
     pub fn scan_if(&mut self, predicate: impl FnOnce(u8) -> bool) -> Option<u8> {
         match self.peek().copied() {
             Some(byte) if predicate(byte) => {
@@ -353,7 +353,7 @@ impl<'buf> Scanner<'buf> {
         unsafe { std::str::from_utf8_unchecked(bytes) }
     }
 
-    #[inline(always)]
+    #[inline]
     fn bump(&mut self, byte: u8) {
         self.index += 1;
 

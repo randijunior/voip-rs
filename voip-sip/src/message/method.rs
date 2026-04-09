@@ -47,7 +47,7 @@ impl Method {
     }
 
     /// Returns the string representation of a method.
-    #[inline(always)]
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Method::Invite => "INVITE",

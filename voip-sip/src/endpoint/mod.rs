@@ -229,8 +229,11 @@ impl Endpoint {
             return Ok(());
         }
 
-        let (host, proto) = target.host_port.clone();
-        let domain = SipHost::new(host, Some(proto));
+        let (host_port, proto) = target.host_port.clone();
+        let domain = SipHost {
+            host_port,
+            protocol: Some(proto),
+        };
 
         let addresses = self.transports().resolver().resolve(&domain).await?;
 
