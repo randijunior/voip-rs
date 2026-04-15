@@ -9,9 +9,6 @@ use utils::OneOrMore;
 use crate::message::sip_uri::{Host, HostPort};
 use crate::transport::TransportProtocol;
 
-mod rfc3263;
-
-pub use rfc3263::SipRfc3263;
 
 type IoResult<T> = io::Result<T>;
 
