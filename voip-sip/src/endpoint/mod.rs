@@ -22,7 +22,8 @@ use crate::message::sip_uri::{Host, HostPort, NameAddr, Uri};
 use crate::message::status_code::StatusCode;
 use crate::message::{ReasonPhrase, Request, Response, StatusLine};
 use crate::resolver::{LookupAddress, SipHost};
-use crate::transaction::manager::Transactions;
+use crate::transaction::ClientTransaction;
+use crate::transaction::manager::TsxModule;
 use crate::transport::incoming::{IncomingRequest, IncomingResponse, MandatoryHeaders};
 use crate::transport::outgoing::{
     Encode, OutgoingDestInfo, OutgoingRequest, OutgoingResponse, TargetTransportInfo,
@@ -187,13 +188,19 @@ impl Endpoint {
             module.on_send_request(request).await;
         }
 
-        request
+        if let Err(err) = request
             .target_info
             .transport
             .send_msg(&request.encoded, &request.target_info.target)
-            .await?;
+            .await {
+                log::error!("Failed to send request: {}", err);
+            }
 
         Ok(())
+    }
+
+    pub async fn send_outgoing_request(&self, request: Request) -> Result<ClientTransaction> {
+        ClientTransaction::send_request(request, self.clone()).await
     }
 
     pub async fn send_outgoing_response(&self, response: &mut OutgoingResponse) -> Result<()> {
@@ -476,8 +483,8 @@ impl Endpoint {
         &self.inner.transport
     }
 
-    pub(crate) fn transactions(&self) -> &Transactions {
-        self.module::<Transactions>()
+    pub(crate) fn transactions(&self) -> &TsxModule {
+        self.module::<TsxModule>()
     }
 
     pub(crate) fn dialogs(&self) -> &crate::dialog::Ua {

@@ -510,12 +510,12 @@ impl Host {
         }
     }
 
-    pub fn is_domain_name(&self) -> bool {
+    pub fn is_domain(&self) -> bool {
         matches!(self, Host::HostName(_))
     }
 
     pub fn is_ip_addr(&self) -> bool {
-        !self.is_domain_name()
+        !self.is_domain()
     }
 }
 

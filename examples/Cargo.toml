@@ -13,10 +13,7 @@ tracing-subscriber = {version = "0.3", features = ["env-filter", "chrono"]}
 async-trait = "0.1.83"
 voip = {path = "../voip"}
 chrono = "0.4"
-
-[dependencies.console-subscriber]
-version = "0.4.1"
-features = ["env-filter"]
+console-subscriber = {version = "0.4.1", features = ["env-filter"]}
 
 [[example]]
 name = "sipstateless"

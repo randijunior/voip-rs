@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 pub use client::ClientTransaction;
-pub use manager::Transactions;
+pub use manager::TsxModule;
 pub use server::ServerTransaction;
 
 use crate::transport::incoming::{IncomingRequest, IncomingResponse};

@@ -761,12 +761,12 @@ impl<'buf> SipParser<'buf> {
 
     #[inline]
     pub fn skip_ws(&mut self) {
-        self.scanner.scan_while(byte::is_space);
+        let _ = self.scanner.scan_while(byte::is_space);
     }
 
     #[inline]
     pub fn skip_newline(&mut self) {
-        self.scanner.scan_while(byte::is_newline);
+        let _ = self.scanner.scan_while(byte::is_newline);
     }
 
     #[inline]

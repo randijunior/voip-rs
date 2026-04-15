@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync;
 
 use tokio::sync::mpsc::{self};
 
@@ -13,11 +12,11 @@ use crate::{Endpoint, RFC3261_BRANCH_ID};
 type TransactionEntry = mpsc::Sender<TransactionMessage>;
 
 #[derive(Default)]
-pub struct Transactions {
-    transactions: Mutex<rustc_hash::FxHashMap<TransactionKey, TransactionEntry>>,
+pub struct TsxModule {
+    transactions: sync::Mutex<rustc_hash::FxHashMap<TransactionKey, TransactionEntry>>,
 }
 
-impl Transactions {
+impl TsxModule {
     #[inline]
     pub(crate) fn add_transaction(&self, key: TransactionKey, entry: TransactionEntry) {
         let mut map = self.transactions.lock().expect("Lock failed");
@@ -41,7 +40,7 @@ impl Transactions {
 }
 
 #[async_trait::async_trait]
-impl endpoint::Module for Transactions {
+impl endpoint::Module for TsxModule {
     fn name(&self) -> &'static str {
         "tsx-module"
     }

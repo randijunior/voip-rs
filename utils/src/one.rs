@@ -12,6 +12,9 @@ impl<T> OneOrMore<T> {
     pub fn one(t: T) -> Self {
         Self::One(t)
     }
+    pub fn more(t: Vec<T>) -> Self {
+        Self::More(t)
+    }
 
     pub fn iter(&self) -> Iter<'_, T> {
         match self {

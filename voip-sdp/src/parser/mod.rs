@@ -120,7 +120,7 @@ impl<'buf> SdpParser<'buf> {
 
     #[inline]
     fn handle_new_line(&mut self) {
-        self.scanner.scan_while(is_newline);
+        let _ = self.scanner.scan_while(is_newline);
     }
 
     fn parse_version(&mut self) -> Result<()> {
@@ -133,7 +133,7 @@ impl<'buf> SdpParser<'buf> {
 
     #[inline]
     fn handle_ws(&mut self) {
-        self.scanner.scan_while(is_space);
+        let _ = self.scanner.scan_while(is_space);
     }
 
     fn parse_origin(&mut self) -> Result<Origin> {
