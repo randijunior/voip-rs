@@ -3,32 +3,17 @@
 use std::net::SocketAddr;
 use std::{io, ops, sync};
 
-pub use hickory_resolver::Name;
 use tokio::net;
 use utils::OneOrMore;
 
 use crate::message::sip_uri::{Host, HostPort};
 use crate::transport::TransportProtocol;
 
+mod rfc3263;
+
+pub use rfc3263::SipRfc3263;
+
 type IoResult<T> = io::Result<T>;
-
-#[derive(Clone)]
-pub struct DomainResolver(sync::Arc<dyn SipDomainResolver>);
-
-
-impl<T: SipDomainResolver> From<T> for DomainResolver {
-    fn from(value: T) -> Self {
-        Self(std::sync::Arc::new(value))
-    }
-}
-
-impl ops::Deref for DomainResolver {
-    type Target = dyn SipDomainResolver;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
 
 #[async_trait::async_trait]
 pub trait SipDomainResolver: Send + Sync + 'static {
@@ -44,19 +29,26 @@ impl SipDomainResolver for DefaultResolver {
             Some(protocol) => protocol,
             None => TransportProtocol::Udp,
         };
+        let port = match target.host_port.port {
+            Some(port) => port,
+            None => transport.default_port(),
+        };
         let socket_addr = match target.host_port.host {
             Host::HostName(ref host_name) => {
-                let mut iter_addr = net::lookup_host(host_name.as_str()).await?;
+                let host = format!("{}:{}", host_name, port);
+                
+                let mut iter_addr = net::lookup_host(host).await?;
 
-                iter_addr.next().unwrap_or(Err(io::Error::other(format!(
-                    "No address found for '{host_name}'"
-                )))?)
+                let Some(addr) = iter_addr.next() else {
+                    return Err(io::Error::other(format!(
+                        "No address found for '{host_name}'"
+                    )))
+                };
+
+                addr
             }
             Host::IpAddr(ip_addr) => {
-                let port = match target.host_port.port {
-                    Some(port) => port,
-                    None => transport.default_port(),
-                };
+
                 SocketAddr::new(ip_addr, port)
             }
         };
@@ -70,6 +62,24 @@ impl SipDomainResolver for DefaultResolver {
     }
 }
 
+#[derive(Clone)]
+pub struct DomainResolver(sync::Arc<dyn SipDomainResolver>);
+
+impl<T: SipDomainResolver> From<T> for DomainResolver {
+    fn from(value: T) -> Self {
+        Self(sync::Arc::new(value))
+    }
+}
+
+impl ops::Deref for DomainResolver {
+    type Target = dyn SipDomainResolver;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+#[derive(Debug)]
 pub struct SipHost {
     pub host_port: HostPort,
     pub protocol: Option<TransportProtocol>,
@@ -82,6 +92,18 @@ pub struct LookupAddress {
 
 pub struct ServerAddresses {
     addresses: OneOrMore<LookupAddress>,
+}
+
+impl ServerAddresses {
+    pub fn new(addresses: OneOrMore<LookupAddress>) -> Self {
+        Self { addresses }
+    }
+}
+
+impl From<OneOrMore<LookupAddress>> for ServerAddresses {
+    fn from(value: OneOrMore<LookupAddress>) -> Self {
+        Self::new(value)
+    }
 }
 
 impl IntoIterator for ServerAddresses {
