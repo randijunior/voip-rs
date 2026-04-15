@@ -17,6 +17,12 @@ pub struct TsxModule {
 }
 
 impl TsxModule {
+    pub fn with_capacity(capacity: usize) -> Self {
+        let map = rustc_hash::FxHashMap::with_capacity_and_hasher(capacity, rustc_hash::FxBuildHasher);
+
+        Self { transactions: sync::Mutex::new(map) }
+    }
+    
     #[inline]
     pub(crate) fn add_transaction(&self, key: TransactionKey, entry: TransactionEntry) {
         let mut map = self.transactions.lock().expect("Lock failed");
