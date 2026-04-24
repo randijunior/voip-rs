@@ -65,19 +65,18 @@ impl ClientTransaction {
                 let branch = crate::generate_branch();
                 let via = Via::new_with_transport(transport, sent_by, Some(branch));
 
-                headers.prepend_header(Header::Via(via));
+                let header = headers.insert_mut(0, Header::Via(via));
 
-                match headers.first_mut().unwrap() {
-                    Header::Via(v) => v,
-                    _ => unreachable!(),
-                }
+                header
+                    .as_via_mut()
+                    .expect("The 'insert_mut' will return the same 'Via' header")
             }
         };
-        let branch = match via.branch().map(|b| b.to_owned()) {
+        let branch = match via.branch.as_ref().map(|b| b.to_owned()) {
             Some(branch) => branch,
             None => {
                 let branch = crate::generate_branch();
-                via.set_branch(branch.clone());
+                via.branch = Some(branch.clone());
                 branch
             }
         };
@@ -131,7 +130,7 @@ impl ClientTransaction {
 
     pub async fn receive_provisional_response(&mut self) -> Result<Option<IncomingResponse>> {
         match self.state_machine.state() {
-            State::Initial | State::Calling | State::Trying
+            State::Calling | State::Trying
                 if !self.request.target_info.transport.is_reliable() =>
             {
                 let mut retrans_interval = T1;
@@ -158,7 +157,7 @@ impl ClientTransaction {
                     }
                 }
             }
-            State::Initial | State::Calling | State::Trying => {
+            State::Calling | State::Trying => {
                 match timeout_at(self.timeout, self.recv_provisional_msg()).await {
                     Ok(Some(msg)) => {
                         self.state_machine.set_state(State::Proceeding);
