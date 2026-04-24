@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::{io, mem};
 
 use crate::endpoint::EndpointInner;
-use crate::endpoint::module::{Module, Modules};
+use crate::endpoint::plugin::{Plugin, Plugins};
 use crate::message::headers::{Accept, Allow, Header, Supported};
 use crate::message::method::Method;
 use crate::transport::tcp::TcpListener;
@@ -15,7 +15,7 @@ use crate::{Endpoint, MediaType, Result};
 /// Builder for creating a new SIP `Endpoint`.
 pub struct EndpointBuilder {
     name: String,
-    modules: Modules,
+    plugins: Plugins,
     allow: Allow,
     accept: Accept,
     supported: Supported,
@@ -41,7 +41,7 @@ impl EndpointBuilder {
     pub fn new() -> Self {
         EndpointBuilder {
             name: String::new(),
-            modules: Modules::default(),
+            plugins: Plugins::default(),
             accept: Accept::default(),
             allow: Allow::default(),
             supported: Supported::default(),
@@ -82,8 +82,8 @@ impl EndpointBuilder {
         self
     }
 
-    pub fn with_module<M: Module>(mut self, module: M) -> EndpointBuilder {
-        self.modules.add_module(module);
+    pub fn with_plugin<M: Plugin>(mut self, plugin: M) -> EndpointBuilder {
+        self.plugins.add_plugin(plugin);
 
         self
     }
@@ -104,11 +104,11 @@ impl EndpointBuilder {
     pub async fn build(mut self) -> Result<Endpoint> {
         log::trace!("Creating endpoint...");
 
-        let mut modules = std::mem::take(&mut self.modules);
+        let mut plugins = std::mem::take(&mut self.plugins);
 
-        for module in modules.iter_mut() {
-            module.on_load(&mut self);
-            log::debug!("Module {} loaded", format_args!("({})", module.name()));
+        for plugin in plugins.iter_mut() {
+            plugin.on_load(&mut self);
+            log::debug!("Plugin {} loaded", format_args!("({})", plugin.name()));
         }
 
         let capabilities = crate::headers![
@@ -126,7 +126,7 @@ impl EndpointBuilder {
                     transport,
                     name: self.name,
                     capabilities,
-                    modules,
+                    plugins,
                 }
             });
 

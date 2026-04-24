@@ -1,7 +1,7 @@
 //! SIP Endpoint
 
 mod builder;
-mod module;
+mod plugin;
 
 use std::any::type_name;
 use std::borrow::Cow;
@@ -11,10 +11,10 @@ use std::sync::Arc;
 
 pub use builder::EndpointBuilder;
 use bytes::Bytes;
-pub use module::{Module, ReceivedRequest, ReceivedResponse};
+pub use plugin::{Plugin, ReceivedRequest, ReceivedResponse};
 
 use crate::Result;
-use crate::endpoint::module::Modules;
+use crate::endpoint::plugin::Plugins;
 use crate::error::Error;
 use crate::message::headers::{CSeq, Header, Headers, Route};
 use crate::message::method::Method;
@@ -37,8 +37,8 @@ pub(crate) struct EndpointInner {
     name: String,
     /// The capability header list.
     capabilities: Headers,
-    /// The list of modules registered.
-    modules: Modules,
+    /// The list of plugins registered.
+    plugins: Plugins,
 }
 
 /// A SIP endpoint.
@@ -70,11 +70,11 @@ impl Endpoint {
         futures_util::future::pending().await
     }
 
-    pub(crate) fn module<M: module::Module>(&self) -> &M {
+    pub(crate) fn plugin<M: plugin::Plugin>(&self) -> &M {
         self.inner
-            .modules
-            .find_module()
-            .ok_or_else(|| format!("endpoint missing module {}", type_name::<M>()))
+            .plugins
+            .find_plugin()
+            .ok_or_else(|| format!("endpoint missing plugin {}", type_name::<M>()))
             .unwrap()
     }
 
@@ -184,8 +184,8 @@ impl Endpoint {
             request.target_info.target
         );
 
-        for module in self.inner.modules.modules() {
-            module.on_send_request(request).await;
+        for plugin in self.inner.plugins.plugins() {
+            plugin.on_send_request(request).await;
         }
 
         if let Err(err) = request
@@ -214,8 +214,8 @@ impl Endpoint {
             response.dest_info
         );
 
-        for module in self.inner.modules.modules() {
-            module.on_send_response(response).await;
+        for plugin in self.inner.plugins.plugins() {
+            plugin.on_send_response(response).await;
         }
 
         self.send_response(response).await?;
@@ -431,8 +431,8 @@ impl Endpoint {
 
         let mut response = Some(response);
 
-        for module in self.inner.modules.modules() {
-            module
+        for plugin in self.inner.plugins.plugins() {
+            plugin
                 .on_receive_response(ReceivedResponse::new(&mut response), self)
                 .await;
 
@@ -443,7 +443,7 @@ impl Endpoint {
 
         if let Some(response) = response {
             log::info!(
-                "Response ({} {}) from /{} was unhandled by any module",
+                "Response ({} {}) from /{} was unhandled by any plugin",
                 response.status_line.code.as_u16(),
                 response.status_line.reason.as_str(),
                 response.incoming_info.transport_info.packet.source
@@ -460,8 +460,8 @@ impl Endpoint {
 
         let mut request = Some(request);
 
-        for module in self.inner.modules.modules() {
-            module
+        for plugin in self.inner.plugins.plugins() {
+            plugin
                 .on_receive_request(ReceivedRequest::new(&mut request), self)
                 .await;
 
@@ -485,11 +485,11 @@ impl Endpoint {
     }
 
     pub(crate) fn transactions(&self) -> &TsxModule {
-        self.module::<TsxModule>()
+        self.plugin::<TsxModule>()
     }
 
     pub(crate) fn dialogs(&self) -> &crate::dialog::Ua {
-        self.module::<crate::dialog::Ua>()
+        self.plugin::<crate::dialog::Ua>()
     }
 }
 

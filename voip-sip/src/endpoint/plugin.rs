@@ -7,9 +7,9 @@ use crate::endpoint::EndpointBuilder;
 use crate::transport::incoming::{IncomingRequest, IncomingResponse};
 use crate::transport::outgoing::{OutgoingRequest, OutgoingResponse};
 
-/// A trait for endpoint module.
+/// A trait for endpoint plugin.
 #[async_trait::async_trait]
-pub trait Module: Downcast + Send + Sync + 'static {
+pub trait Plugin: Downcast + Send + Sync + 'static {
     fn name(&self) -> &'static str;
 
     fn on_load(&mut self, _builder: &mut EndpointBuilder) {}
@@ -23,11 +23,11 @@ pub trait Module: Downcast + Send + Sync + 'static {
     async fn on_send_response(&self, _request: &mut OutgoingResponse) {}
 }
 
-impl_downcast!(Module);
+impl_downcast!(Plugin);
 
 #[derive(Default)]
-pub struct Modules {
-    modules: Vec<Box<dyn Module>>,
+pub struct Plugins {
+    plugins: Vec<Box<dyn Plugin>>,
 }
 
 pub struct ReceivedRequest<'r>(ToTake<'r, IncomingRequest>);
@@ -38,21 +38,21 @@ pub struct ToTake<'a, T: 'a> {
     inner: &'a mut Option<T>,
 }
 
-impl Modules {
-    pub fn modules(&self) -> &Vec<Box<dyn Module>> {
-        &self.modules
+impl Plugins {
+    pub fn plugins(&self) -> &Vec<Box<dyn Plugin>> {
+        &self.plugins
     }
 
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, Box<dyn Module + 'static>> {
-        self.modules.iter_mut()
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, Box<dyn Plugin + 'static>> {
+        self.plugins.iter_mut()
     }
 
-    pub fn find_module<M: Module>(&self) -> Option<&M> {
-        self.modules.iter().find_map(|m| m.downcast_ref())
+    pub fn find_plugin<M: Plugin>(&self) -> Option<&M> {
+        self.plugins.iter().find_map(|m| m.downcast_ref())
     }
 
-    pub fn add_module<M: Module>(&mut self, module: M) {
-        self.modules.push(Box::new(module));
+    pub fn add_plugin<M: Plugin>(&mut self, plugin: M) {
+        self.plugins.push(Box::new(plugin));
     }
 }
 

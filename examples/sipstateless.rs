@@ -9,7 +9,7 @@ use voip::sip::message::status_code::StatusCode;
 pub struct SipStateless;
 
 #[async_trait::async_trait]
-impl endpoint::Module for SipStateless {
+impl endpoint::Plugin for SipStateless {
     fn name(&self) -> &'static str {
         "sip-stateless"
     }
@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let endpoint = Endpoint::builder()
-        .with_module(SipStateless)
+        .with_plugin(SipStateless)
         .with_udp_addr("0.0.0.0:8089")
         .build()
         .await?;

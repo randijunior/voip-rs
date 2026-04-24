@@ -46,9 +46,9 @@ impl TsxModule {
 }
 
 #[async_trait::async_trait]
-impl endpoint::Module for TsxModule {
+impl endpoint::Plugin for TsxModule {
     fn name(&self) -> &'static str {
-        "tsx-module"
+        "tsx-plugin"
     }
 
     async fn on_receive_request(&self, mut request: ReceivedRequest<'_>, _: &Endpoint) {

@@ -58,7 +58,7 @@ impl Ua {
 }
 
 #[async_trait::async_trait]
-impl endpoint::Module for Ua {
+impl endpoint::Plugin for Ua {
     fn name(&self) -> &'static str {
         "dialog-ua"
     }
