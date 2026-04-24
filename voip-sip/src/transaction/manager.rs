@@ -95,7 +95,7 @@ impl TransactionKey {
     }
 
     fn from_incoming_info(info: &IncomingInfo, role: Role) -> Self {
-        match info.mandatory_headers.via.branch() {
+        match &info.mandatory_headers.via.branch {
             Some(branch) if branch.starts_with(RFC3261_BRANCH_ID) => {
                 let branch = branch.to_owned();
                 let method = info.mandatory_headers.cseq.method();

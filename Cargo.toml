@@ -7,7 +7,6 @@ resolver = "2"
 opt-level = 0
 
 [workspace.package]
-name = "voip"
 version = "0.1.0"
 edition = "2024"
 

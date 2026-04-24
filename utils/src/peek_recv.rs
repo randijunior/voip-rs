@@ -22,7 +22,7 @@ impl<T> PeekableReceiver<T> {
             None => self.rx.recv().await,
         }
     }
-    pub fn try_recv(&mut self) -> std::result::Result<T, mpsc::error::TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<T, mpsc::error::TryRecvError> {
         match self.peeked.take() {
             Some(msg) => Ok(msg),
             None => self.rx.try_recv(),
@@ -35,9 +35,9 @@ impl<T> PeekableReceiver<T> {
         self.peeked.as_ref()
     }
 
-    pub async fn recv_if(&mut self, func: impl FnOnce(&T) -> bool) -> Option<T> {
+    pub async fn recv_if(&mut self, cond: impl FnOnce(&T) -> bool) -> Option<T> {
         match self.peek().await {
-            Some(matched) if func(matched) => self.peeked.take(),
+            Some(matched) if cond(matched) => self.peeked.take(),
             _ => None,
         }
     }

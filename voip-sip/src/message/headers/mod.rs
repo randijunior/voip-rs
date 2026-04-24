@@ -170,8 +170,8 @@ impl Headers {
         self.0.push(hdr);
     }
 
-    pub fn prepend_header(&mut self, hdr: Header) {
-        self.0.insert(0, hdr);
+    pub fn insert_mut(&mut self, index: usize, hdr: Header)  ->  &mut Header {
+        self.0.insert_mut(index, hdr)
     }
 
     #[inline]

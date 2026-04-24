@@ -91,6 +91,11 @@ pub trait SipTransport: Send + Sync + 'static {
     /// Returns `true` if the transport is reliable.
     fn is_reliable(&self) -> bool;
 
+    /// Returns `true` if the transport is unreliable.
+    fn is_unreliable(&self) -> bool {
+        !self.is_reliable()
+    }
+
     /// Returns `true` if the transport is secure.
     fn is_secure(&self) -> bool;
 
@@ -247,7 +252,7 @@ impl TransportLayer {
             }
         };
 
-        mandatory_headers.via.set_received(packet.source.ip());
+        mandatory_headers.via.received = Some(packet.source.ip());
 
         let info = IncomingInfo {
             mandatory_headers,

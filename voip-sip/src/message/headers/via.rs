@@ -11,16 +11,19 @@ use crate::transport::TransportProtocol;
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct Via {
-    transport: TransportProtocol,
-    sent_by: HostPort,
-    ttl: Option<u8>,
-    maddr: Option<Host>,
-    received: Option<IpAddr>,
-    branch: Option<String>,
-    rport: Option<u16>,
-    comment: Option<String>,
-    params: Params,
+    pub transport: TransportProtocol,
+    pub sent_by: HostPort,
+    pub ttl: Option<u8>,
+    pub maddr: Option<Host>,
+    pub received: Option<IpAddr>,
+    pub branch: Option<String>,
+    pub rport: Option<Rport>,
+    pub comment: Option<String>,
+    pub params: Params,
 }
+
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Rport(Option<u16>);
 
 impl Via {
     pub fn new_udp(sent_by: HostPort, branch: Option<String>) -> Self {
@@ -43,38 +46,6 @@ impl Via {
             comment: None,
             params: Default::default(),
         }
-    }
-
-    pub fn branch(&self) -> Option<&str> {
-        self.branch.as_deref()
-    }
-
-    pub fn set_branch(&mut self, branch: String) {
-        self.branch = Some(branch);
-    }
-
-    pub fn set_received(&mut self, received: IpAddr) {
-        self.received = Some(received);
-    }
-
-    pub fn maddr(&self) -> Option<&Host> {
-        self.maddr.as_ref()
-    }
-
-    pub fn sent_by(&self) -> &HostPort {
-        &self.sent_by
-    }
-
-    pub fn received(&self) -> Option<IpAddr> {
-        self.received
-    }
-
-    pub fn rport(&self) -> Option<u16> {
-        self.rport
-    }
-
-    pub fn sent_protocol(&self) -> TransportProtocol {
-        self.transport
     }
 }
 
@@ -134,12 +105,12 @@ impl HeaderParse for Via {
                         .or_else(|_| parser.error(ErrorKind::Port))?
                     {
                         if crate::is_valid_port(rport) {
-                            Some(rport)
+                            Some(Rport(Some(rport)))
                         } else {
                             return parser.error(ErrorKind::Port);
                         }
                     } else {
-                        None
+                        Some(Rport(None))
                     };
                     None
                 }
@@ -179,7 +150,11 @@ impl fmt::Display for Via {
         )?;
 
         if let Some(rport) = self.rport {
-            write!(f, ";rport={}", rport)?;
+            write!(f, ";rport")?;
+
+            if let Some(port) = rport.0 {
+                write!(f, "={port}")?;
+            }
         }
         if let Some(received) = &self.received {
             write!(f, ";received={received}")?;

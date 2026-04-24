@@ -120,7 +120,7 @@ impl Endpoint {
         // the response (with the exception of the 100 (Trying)
         // response, in which a tag MAY be present).
         if to.tag().is_none() && code.as_u16() > 100 {
-            to.set_tag(mandatory_headers.via.branch().map(|b| b.to_owned()));
+            to.set_tag(mandatory_headers.via.branch.as_ref().map(|b| b.to_owned()));
         }
         headers.push(Header::To(to));
 
@@ -275,13 +275,13 @@ impl Endpoint {
     pub(crate) fn get_response_destination(&self, request: &IncomingRequest) -> OutgoingDestInfo {
         let incoming_info = &request.incoming_info;
         let topmost_via = &incoming_info.mandatory_headers.via;
-        let via_sent_by = topmost_via.sent_by();
+        let via_sent_by = &topmost_via.sent_by;
         let source_transport = &incoming_info.transport_info.transport;
 
-        if topmost_via.sent_protocol().is_reliable() {
+        if topmost_via.transport.is_reliable() {
             let source_addr = incoming_info.transport_info.packet.source;
 
-            let host = if let Some(ip_addr) = topmost_via.received() {
+            let host = if let Some(ip_addr) = topmost_via.received {
                 let port = via_sent_by
                     .port
                     .unwrap_or(source_transport.protocol().default_port());
@@ -300,7 +300,7 @@ impl Endpoint {
             };
         }
 
-        if let Some(maddr) = topmost_via.maddr().cloned() {
+        if let Some(maddr) = topmost_via.maddr.clone() {
             let port = via_sent_by.port.unwrap_or(5060);
             let host_port = HostPort {
                 host: maddr,
@@ -308,12 +308,12 @@ impl Endpoint {
             };
 
             return OutgoingDestInfo {
-                host_port: (host_port, topmost_via.sent_protocol()),
+                host_port: (host_port, topmost_via.transport),
                 transport: None,
             };
         }
 
-        if let Some(ip_addr) = topmost_via.received() {
+        if let Some(ip_addr) = topmost_via.received {
             let port = via_sent_by.port.unwrap_or(5060);
             let socket_addr = SocketAddr::new(ip_addr, port);
 
@@ -324,7 +324,7 @@ impl Endpoint {
         }
 
         OutgoingDestInfo {
-            host_port: (via_sent_by.clone(), topmost_via.sent_protocol()),
+            host_port: (via_sent_by.clone(), topmost_via.transport),
             transport: None,
         }
     }
@@ -423,9 +423,10 @@ impl Endpoint {
 
     pub(crate) async fn on_response(&self, response: IncomingResponse) {
         log::debug!(
-            "<= Response ({} {})",
+            "<= Response {} {} from /{}",
             response.status_line.code.as_u16(),
-            response.status_line.reason.as_str()
+            response.status_line.reason.as_str(),
+            response.incoming_info.transport_info.packet.source
         );
 
         let mut response = Some(response);

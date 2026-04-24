@@ -1,11 +1,8 @@
 use tokio::sync::watch;
 
 /// Defines the possible states of a SIP Transaction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum State {
-    #[default]
-    /// Initial state
-    Initial,
     /// Calling state
     Calling,
     /// Trying state
@@ -23,7 +20,6 @@ pub enum State {
 impl std::fmt::Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let state_str = match self {
-            Self::Initial => "Initial",
             Self::Calling => "Calling",
             Self::Trying => "Trying",
             Self::Proceeding => "Proceeding",
@@ -68,7 +64,6 @@ impl StateMachine {
         self.state_change_notifier.as_ref()
     }
 
-    #[must_use]
     fn notify_state_change(&self, state: State) {
         if let Some(sender) = self.borrow_state_notifier() {
             let _result = sender.send(state);

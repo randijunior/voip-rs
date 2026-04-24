@@ -9,9 +9,9 @@ use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct From {
-    uri: SipUri,
-    tag: Option<String>,
-    params: Params,
+    pub uri: SipUri,
+    pub tag: Option<String>,
+    pub params: Params,
 }
 
 impl HeaderParse for From {
