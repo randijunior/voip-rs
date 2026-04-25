@@ -26,14 +26,15 @@ pub struct Via {
 pub struct Rport(Option<u16>);
 
 impl Via {
-    pub fn new_udp(sent_by: HostPort, branch: Option<String>) -> Self {
-        Self::new_with_transport(TransportProtocol::Udp, sent_by, branch)
+    pub fn new_udp(sent_by: HostPort, branch: Option<String>, rport: Option<Rport>) -> Self {
+        Self::new_with_transport(TransportProtocol::Udp, sent_by, branch, rport)
     }
 
     pub fn new_with_transport(
         transport: TransportProtocol,
         sent_by: HostPort,
         branch: Option<String>,
+        rport: Option<Rport>
     ) -> Self {
         Self {
             transport,
@@ -42,7 +43,7 @@ impl Via {
             maddr: None,
             received: None,
             branch,
-            rport: None,
+            rport,
             comment: None,
             params: Default::default(),
         }

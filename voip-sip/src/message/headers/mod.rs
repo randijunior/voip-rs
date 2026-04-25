@@ -43,7 +43,7 @@ mod timestamp;
 mod to;
 mod unsupported;
 mod user_agent;
-mod via;
+pub mod via;
 mod warning;
 mod www_authenticate;
 
@@ -95,7 +95,6 @@ pub use timestamp::Timestamp;
 pub use to::To;
 pub use unsupported::Unsupported;
 pub use user_agent::UserAgent;
-pub use via::Via;
 pub use warning::Warning;
 pub use www_authenticate::WWWAuthenticate;
 
