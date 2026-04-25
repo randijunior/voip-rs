@@ -28,7 +28,6 @@ extern crate assert_matches;
 pub(crate) mod test_utils;
 
 use std::fmt::{self, Debug};
-use std::net::SocketAddr;
 use std::str::{
     FromStr, {self},
 };
@@ -98,10 +97,7 @@ pub struct ParseQError;
 
 impl From<ParseQError> for Error {
     fn from(value: ParseQError) -> Self {
-        todo!()
-        // Self::ParseError(SipParserError {
-        //     message: format!("{:?}", value),
-        // })
+        Self::Other(format!("{:#?}", value))
     }
 }
 
@@ -187,11 +183,4 @@ impl fmt::Display for MediaType {
         write!(f, "{}", params)?;
         Ok(())
     }
-}
-
-pub(crate) fn get_local_name(addr: &SocketAddr) -> String {
-    let ip = local_ip_address::local_ip().unwrap_or(addr.ip());
-    let local_name = format!("{}:{}", ip, addr.port());
-
-    local_name
 }

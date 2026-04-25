@@ -5,6 +5,7 @@ pub mod lookup;
 pub mod one;
 mod peek_recv;
 pub mod scanner;
+pub mod local_ip;
 
 pub use lookup::*;
 pub use one::*;
