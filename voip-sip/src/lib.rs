@@ -6,19 +6,19 @@
 pub mod dialog;
 pub mod endpoint;
 pub mod message;
-pub(crate) mod parser;
 pub mod resolver;
 pub mod transaction;
+pub mod macros;
+pub(crate) mod parser;
 pub(crate) mod transport;
-
 pub(crate) mod error;
 
-pub mod macros;
-
 pub use endpoint::Endpoint;
-use error::Error;
 pub use error::Result;
-use parser::SipParser;
+pub use transport::outgoing::{OutgoingRequest, OutgoingResponse};
+pub mod utils {
+    pub use utils::local_ip;
+}
 
 #[cfg(test)]
 #[macro_use]
@@ -27,6 +27,7 @@ extern crate assert_matches;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
+use error::Error;
 use std::fmt::{self, Debug};
 use std::str::{
     FromStr, {self},
@@ -150,7 +151,7 @@ impl MediaType {
         }
     }
 
-    pub fn parse(parser: &mut SipParser) -> Result<Self> {
+    pub fn parse(parser: &mut parser::SipParser) -> Result<Self> {
         let mtype = parser.token()?;
         parser.advance()?;
         let subtype = parser.token()?;
@@ -160,7 +161,7 @@ impl MediaType {
     }
 
     pub fn from_static(s: &'static str) -> Result<Self> {
-        Self::parse(&mut SipParser::new(s.as_bytes()))
+        Self::parse(&mut parser::SipParser::new(s.as_bytes()))
     }
 
     /// Constructs a `MediaType` with an optional

@@ -23,7 +23,7 @@ use crate::message::status_code::StatusCode;
 use crate::message::{ReasonPhrase, Request, Response, StatusLine};
 use crate::resolver::{LookupAddress, SipHost};
 use crate::transaction::ClientTransaction;
-use crate::transaction::manager::TsxModule;
+use crate::transaction::manager::TsxPlugin;
 use crate::transport::incoming::{IncomingRequest, IncomingResponse, MandatoryHeaders};
 use crate::transport::outgoing::{
     Encode, OutgoingDestInfo, OutgoingRequest, OutgoingResponse, TargetTransportInfo,
@@ -484,8 +484,8 @@ impl Endpoint {
         &self.inner.transport
     }
 
-    pub(crate) fn transactions(&self) -> &TsxModule {
-        self.plugin::<TsxModule>()
+    pub(crate) fn transactions(&self) -> &TsxPlugin {
+        self.plugin::<TsxPlugin>()
     }
 
     pub(crate) fn dialogs(&self) -> &crate::dialog::Ua {
