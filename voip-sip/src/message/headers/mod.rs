@@ -93,6 +93,7 @@ pub use subject::Subject;
 pub use supported::Supported;
 pub use timestamp::Timestamp;
 pub use to::To;
+pub use via::Via;
 pub use unsupported::Unsupported;
 pub use user_agent::UserAgent;
 pub use warning::Warning;

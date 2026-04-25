@@ -23,7 +23,7 @@ pub struct Via {
 }
 
 #[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Rport(Option<u16>);
+pub struct Rport(pub Option<u16>);
 
 impl Via {
     pub fn new_udp(sent_by: HostPort, branch: Option<String>, rport: Option<Rport>) -> Self {
