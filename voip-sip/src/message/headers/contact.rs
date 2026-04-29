@@ -8,10 +8,10 @@ use crate::{Q, macros};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Contact {
-    uri: SipUri,
-    q: Option<Q>,
-    expires: Option<u32>,
-    param: Params,
+    pub uri: SipUri,
+    pub q: Option<Q>,
+    pub expires: Option<u32>,
+    pub param: Params,
 }
 
 impl HeaderParse for Contact {

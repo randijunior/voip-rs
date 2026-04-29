@@ -12,11 +12,11 @@ use crate::{Endpoint, RFC3261_BRANCH_ID};
 type TransactionEntry = mpsc::Sender<TransactionMessage>;
 
 #[derive(Default)]
-pub struct TsxModule {
+pub struct TsxPlugin {
     transactions: sync::Mutex<rustc_hash::FxHashMap<TransactionKey, TransactionEntry>>,
 }
 
-impl TsxModule {
+impl TsxPlugin {
     pub fn with_capacity(capacity: usize) -> Self {
         let map = rustc_hash::FxHashMap::with_capacity_and_hasher(capacity, rustc_hash::FxBuildHasher);
 
@@ -46,7 +46,7 @@ impl TsxModule {
 }
 
 #[async_trait::async_trait]
-impl endpoint::Plugin for TsxModule {
+impl endpoint::Plugin for TsxPlugin {
     fn name(&self) -> &'static str {
         "tsx-plugin"
     }

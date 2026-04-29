@@ -7,6 +7,7 @@ use utils::PeekableReceiver;
 
 use crate::error::{Error, TransactionError};
 use crate::message::Request;
+use crate::message::headers::via::Rport;
 use crate::message::headers::{Header, Via};
 use crate::message::method::Method;
 use crate::transaction::fsm::{State, StateMachine};
@@ -64,7 +65,7 @@ impl ClientTransaction {
                 let sent_by = outgoing.target_info.transport.local_addr().into();
                 let transport = outgoing.target_info.transport.protocol();
                 let branch = crate::generate_branch();
-                let via = Via::new_with_transport(transport, sent_by, Some(branch));
+                let via = Via::new_with_transport(transport, sent_by, Some(branch), Some(Rport(None)));
 
                 let header = headers.insert_mut(0, Header::Via(via));
 
