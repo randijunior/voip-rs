@@ -1,10 +1,11 @@
 use std::net::SocketAddr;
 
+use futures_util::future::Either;
 use tokio::sync::mpsc::{self};
-use tokio::time::{Instant, timeout, timeout_at};
+use tokio::time::{self, Instant};
 use utils::PeekableReceiver;
 
-use crate::error::TransactionError;
+use crate::error::{Error, TransactionError};
 use crate::message::Request;
 use crate::message::headers::{Header, Via};
 use crate::message::method::Method;
@@ -32,21 +33,21 @@ pub struct ClientTransaction {
 
 impl ClientTransaction {
     pub(crate) async fn send_request(request: Request, endpoint: Endpoint) -> Result<Self> {
-        Self::send_request_inner(request, None, endpoint).await
+        Self::send(request, endpoint, None).await
     }
 
     pub(crate) async fn send_request_with_target(
         request: Request,
-        target: (Transport, SocketAddr),
         endpoint: Endpoint,
+        target: (Transport, SocketAddr),
     ) -> Result<Self> {
-        Self::send_request_inner(request, Some(target), endpoint).await
+        Self::send(request, endpoint, Some(target)).await
     }
 
-    async fn send_request_inner(
+    async fn send(
         request: Request,
-        target: Option<(Transport, SocketAddr)>,
         endpoint: Endpoint,
+        target: Option<(Transport, SocketAddr)>,
     ) -> Result<Self> {
         let method = request.req_line.method;
         assert_ne!(
@@ -93,7 +94,7 @@ impl ClientTransaction {
 
         endpoint.transactions().add_transaction(key.clone(), sender);
 
-        let uac = Self {
+        let client_tsx = Self {
             key,
             endpoint,
             state_machine: StateMachine::new(state),
@@ -102,93 +103,27 @@ impl ClientTransaction {
             timeout: Instant::now() + T1 * 64,
         };
 
-        log::trace!("Transaction Created [{:#?}] ({:p})", Role::UAC, &uac);
+        log::trace!("Transaction Created [{:#?}] ({:p})", Role::UAC, &client_tsx);
 
-        Ok(uac)
-    }
-
-    pub fn state(&self) -> State {
-        self.state_machine.state()
-    }
-
-    pub fn state_machine_mut(&mut self) -> &mut StateMachine {
-        &mut self.state_machine
-    }
-
-    async fn recv_provisional_msg(&mut self) -> Option<IncomingResponse> {
-        match self
-            .channel
-            .recv_if(|msg| matches!(msg, TransactionMessage::Response(response) if response.status_line.code.is_provisional()))
-            .await
-        {
-            Some(TransactionMessage::Response(provisional_response)) => {
-                Some(provisional_response)
-            }
-            _ => None,
-        }
+        Ok(client_tsx)
     }
 
     pub async fn receive_provisional_response(&mut self) -> Result<Option<IncomingResponse>> {
-        match self.state_machine.state() {
-            State::Calling | State::Trying
-                if !self.request.target_info.transport.is_reliable() =>
-            {
-                let mut retrans_interval = T1;
-                loop {
-                    let timer = self.timeout;
-                    let msg = timeout(retrans_interval, self.recv_provisional_msg());
-
-                    match timeout_at(timer, msg).await {
-                        Ok(Ok(Some(msg))) => {
-                            self.state_machine.set_state(State::Proceeding);
-                            return Ok(Some(msg));
-                        }
-                        Ok(Err(_)) => {
-                            // retransmit
-                            self.endpoint.send_request(&mut self.request).await?;
-                            retrans_interval *= 2;
-                            continue;
-                        }
-                        Err(_elapsed) => {
-                            self.state_machine.set_state(State::Terminated);
-                            return Err(TransactionError::Timeout.into());
-                        }
-                        _ => todo!(),
-                    }
-                }
-            }
-            State::Calling | State::Trying => {
-                match timeout_at(self.timeout, self.recv_provisional_msg()).await {
-                    Ok(Some(msg)) => {
-                        self.state_machine.set_state(State::Proceeding);
-                        return Ok(Some(msg));
-                    }
-                    Ok(None) => return Ok(None),
-                    Err(_elapsed) => {
-                        self.state_machine.set_state(State::Terminated);
-                        return Err(TransactionError::Timeout.into());
-                    }
-                }
-            }
-            State::Proceeding => {
-                // TODO: Add Timeout
-                return Ok(self.recv_provisional_msg().await);
-            }
-            State::Completed => todo!(),
-            State::Confirmed => todo!(),
-            State::Terminated => todo!(),
+        if self.state() <= State::Proceeding {
+            self.receive_response_if(|res| res.status_line.code.is_provisional())
+                .await
+        } else {
+            Ok(None)
         }
     }
 
     pub async fn receive_final_response(mut self) -> Result<IncomingResponse> {
-        // Change to only receive final.
-        let response = self.channel.recv().await.unwrap();
+        let response = self
+            .receive_response_if(|res| res.status_line.code.is_final())
+            .await?
+            .ok_or(Error::ChannelClosed)?;
 
-        let TransactionMessage::Response(response) = response else {
-            unimplemented!()
-        };
-
-        if self.request.request.req_line.method == Method::Invite
+        if self.request.req_line.method == Method::Invite
             && let 200..299 = response.status_line.code.as_u16()
             && matches!(
                 self.state_machine.state(),
@@ -198,6 +133,7 @@ impl ClientTransaction {
             self.state_machine.set_state(State::Terminated);
             return Ok(response);
         }
+
         self.state_machine.set_state(State::Completed);
 
         if self.is_reliable() {
@@ -213,7 +149,7 @@ impl ClientTransaction {
             // timer d fires
             let timer_d = Instant::now() + 64 * T1;
             tokio::spawn(async move {
-                while let Ok(Some(_)) = timeout_at(timer_d, self.channel.recv()).await {
+                while let Ok(Some(_)) = time::timeout_at(timer_d, self.channel.recv()).await {
                     if let Err(err) = self.endpoint.send_request(&mut ack_request).await {
                         log::error!("Failed to retransmit: {}", err);
                     }
@@ -224,7 +160,7 @@ impl ClientTransaction {
             // timer k fires
             let timer_k = Instant::now() + T4;
             tokio::spawn(async move {
-                while let Ok(Some(_)) = timeout_at(timer_k, self.channel.recv()).await {
+                while let Ok(Some(_)) = time::timeout_at(timer_k, self.channel.recv()).await {
                     // buffer any additional response retransmissions that may be received
                 }
                 self.state_machine.set_state(State::Terminated);
@@ -234,12 +170,75 @@ impl ClientTransaction {
         Ok(response)
     }
 
+    async fn receive_response_if<F>(&mut self, pred: F) -> Result<Option<IncomingResponse>>
+    where
+        F: Fn(&IncomingResponse) -> bool,
+    {
+        let cond = |msg: &TransactionMessage| matches!(msg, TransactionMessage::Response(response) if pred(response));
+        let deadline = self.timeout;
+
+        if !matches!(self.state(), State::Calling | State::Trying) {
+            let msg = match self.channel.recv_if(cond).await {
+                Some(TransactionMessage::Response(msg)) => Some(msg),
+                _ => None,
+            };
+            return Ok(msg);
+        }
+
+        if self.is_unreliable() {
+            let mut retrans_interval = T1;
+            loop {
+                let fut = time::timeout(retrans_interval, self.channel.recv_if(cond));
+
+                match time::timeout_at(deadline, fut).await {
+                    Ok(Ok(Some(TransactionMessage::Response(msg)))) => {
+                        return Ok(Some(msg));
+                    }
+                    Ok(Err(_elapsed)) => {
+                        // retransmit
+                        self.endpoint.send_request(&mut self.request).await?;
+                        retrans_interval *= 2;
+                        continue;
+                    }
+                    Err(_elapsed) => {
+                        self.state_machine.set_state(State::Terminated);
+                        return Err(TransactionError::Timeout.into());
+                    }
+                    Ok(Ok(None)) => return Ok(None),
+                    _ => unimplemented!("only response"),
+                }
+            }
+        } else {
+            match time::timeout_at(deadline, self.channel.recv_if(cond)).await {
+                Ok(Some(TransactionMessage::Response(msg))) => return Ok(Some(msg)),
+                Err(_elapsed) => {
+                    self.state_machine.set_state(State::Terminated);
+                    return Err(TransactionError::Timeout.into());
+                }
+                Ok(None) => return Ok(None),
+                _ => unimplemented!("only response"),
+            }
+        }
+    }
+
+    pub(crate) fn state(&self) -> State {
+        self.state_machine.state()
+    }
+
+    pub fn state_machine_mut(&mut self) -> &mut StateMachine {
+        &mut self.state_machine
+    }
+
     pub fn transaction_key(&self) -> &TransactionKey {
         &self.key
     }
 
     fn is_reliable(&self) -> bool {
         self.request.target_info.transport.is_reliable()
+    }
+
+    fn is_unreliable(&self) -> bool {
+        self.request.target_info.transport.is_unreliable()
     }
 }
 
@@ -269,8 +268,8 @@ mod tests {
 
         let uac = ClientTransaction::send_request_with_target(
             ctx.request,
-            (ctx.transport, ctx.destination),
             ctx.endpoint,
+            (ctx.transport, ctx.destination),
         )
         .await
         .expect("error sending request");
@@ -823,8 +822,8 @@ mod tests {
 
         let uac = ClientTransaction::send_request_with_target(
             ctx.request,
-            (ctx.transport, ctx.destination),
             ctx.endpoint,
+            (ctx.transport, ctx.destination),
         )
         .await
         .expect("failure sending request");

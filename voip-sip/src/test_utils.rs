@@ -330,8 +330,8 @@ pub mod transaction {
 
             let mut client = ClientTransaction::send_request_with_target(
                 request.request.clone(),
-                target,
                 endpoint.clone(),
+                target,
             )
             .await
             .expect("failure sending request");
