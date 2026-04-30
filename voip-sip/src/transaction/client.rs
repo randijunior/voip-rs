@@ -65,7 +65,8 @@ impl ClientTransaction {
                 let sent_by = outgoing.target_info.transport.local_addr().into();
                 let transport = outgoing.target_info.transport.protocol();
                 let branch = crate::generate_branch();
-                let via = Via::new_with_transport(transport, sent_by, Some(branch), Some(Rport(None)));
+                let via =
+                    Via::new_with_transport(transport, sent_by, Some(branch), Some(Rport(None)));
 
                 let header = headers.insert_mut(0, Header::Via(via));
 
@@ -178,47 +179,60 @@ impl ClientTransaction {
         let cond = |msg: &TransactionMessage| matches!(msg, TransactionMessage::Response(response) if pred(response));
         let deadline = self.timeout;
 
-        if !matches!(self.state(), State::Calling | State::Trying) {
-            let msg = match self.channel.recv_if(cond).await {
-                Some(TransactionMessage::Response(msg)) => Some(msg),
-                _ => None,
-            };
-            return Ok(msg);
-        }
+        match self.state() {
+            State::Calling | State::Trying if self.is_unreliable() => {
+                let mut retrans_interval = T1;
+                loop {
+                    let fut = time::timeout(retrans_interval, self.channel.recv_if(cond));
 
-        if self.is_unreliable() {
-            let mut retrans_interval = T1;
-            loop {
-                let fut = time::timeout(retrans_interval, self.channel.recv_if(cond));
-
-                match time::timeout_at(deadline, fut).await {
-                    Ok(Ok(Some(TransactionMessage::Response(msg)))) => {
-                        return Ok(Some(msg));
+                    match time::timeout_at(deadline, fut).await {
+                        Ok(Ok(Some(TransactionMessage::Response(msg)))) => {
+                            return Ok(Some(msg));
+                        }
+                        Ok(Err(_elapsed)) => {
+                            // retransmit
+                            self.endpoint.send_request(&mut self.request).await?;
+                            retrans_interval *= 2;
+                            continue;
+                        }
+                        Err(_elapsed) => {
+                            self.state_machine.set_state(State::Terminated);
+                            return Err(TransactionError::Timeout.into());
+                        }
+                        Ok(Ok(None)) => return Ok(None),
+                        _ => unimplemented!("only response"),
                     }
-                    Ok(Err(_elapsed)) => {
-                        // retransmit
-                        self.endpoint.send_request(&mut self.request).await?;
-                        retrans_interval *= 2;
-                        continue;
-                    }
+                }
+            }
+            State::Calling | State::Trying => {
+                match time::timeout_at(deadline, self.channel.recv_if(cond)).await {
+                    Ok(Some(TransactionMessage::Response(msg))) => return Ok(Some(msg)),
                     Err(_elapsed) => {
                         self.state_machine.set_state(State::Terminated);
                         return Err(TransactionError::Timeout.into());
                     }
-                    Ok(Ok(None)) => return Ok(None),
+                    Ok(None) => return Ok(None),
                     _ => unimplemented!("only response"),
                 }
             }
-        } else {
-            match time::timeout_at(deadline, self.channel.recv_if(cond)).await {
-                Ok(Some(TransactionMessage::Response(msg))) => return Ok(Some(msg)),
-                Err(_elapsed) => {
-                    self.state_machine.set_state(State::Terminated);
-                    return Err(TransactionError::Timeout.into());
+            State::Proceeding if self.request.req_line.method == Method::Invite => {
+                match self.channel.recv_if(cond).await {
+                    Some(TransactionMessage::Response(msg)) => return Ok(Some(msg)),
+                    _ => return Ok(None),
                 }
-                Ok(None) => return Ok(None),
-                _ => unimplemented!("only response"),
             }
+            State::Proceeding => {
+                match time::timeout_at(deadline, self.channel.recv_if(cond)).await {
+                    Ok(Some(TransactionMessage::Response(msg))) => return Ok(Some(msg)),
+                    Err(_elapsed) => {
+                        self.state_machine.set_state(State::Terminated);
+                        return Err(TransactionError::Timeout.into());
+                    }
+                    Ok(None) => return Ok(None),
+                    _ => unimplemented!("only response"),
+                }
+            }
+            _ => unreachable!(),
         }
     }
 
