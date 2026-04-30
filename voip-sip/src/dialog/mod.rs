@@ -8,7 +8,7 @@ use crate::endpoint::Endpoint;
 use crate::error::{DialogError, Result};
 use crate::message::ReasonPhrase;
 use crate::message::headers::{CallId, Contact, From, Header, Headers, To};
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::message::param::Params;
 use crate::message::sip_uri::{Scheme, Uri};
 use crate::message::status_code::StatusCode;
@@ -16,8 +16,8 @@ use crate::transaction::Role;
 use crate::transport::incoming::{IncomingRequest, IncomingResponse};
 
 /// Returns `true` if this method can establish a dialog
-const fn can_establish_a_dialog(method: &Method) -> bool {
-    matches!(method, Method::Invite)
+const fn can_establish_a_dialog(method: &SipMethod) -> bool {
+    matches!(method, SipMethod::Invite)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -113,7 +113,7 @@ impl Dialog {
                 let request_cseq = request.incoming_info.mandatory_headers.cseq.cseq();
 
                 if request_cseq <= self.remote_cseq
-                    && !matches!(request.req_line.method, Method::Ack | Method::Cancel)
+                    && !matches!(request.req_line.method, SipMethod::Ack | SipMethod::Cancel)
                 {
                     let st_text = ReasonPhrase::from("Invalid Cseq");
                     let mut response = self.endpoint.create_outgoing_response(

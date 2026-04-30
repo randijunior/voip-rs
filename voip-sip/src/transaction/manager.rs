@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{self};
 
 use super::{Role, TransactionMessage};
 use crate::endpoint::{self, ReceivedRequest, ReceivedResponse};
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::message::sip_uri::HostPort;
 use crate::transport::incoming::{IncomingInfo, IncomingRequest, IncomingResponse};
 use crate::{Endpoint, RFC3261_BRANCH_ID};
@@ -108,8 +108,8 @@ impl TransactionKey {
         }
     }
 
-    pub fn new_key_3261(role: Role, method: Method, branch: String) -> Self {
-        let method = if matches!(method, Method::Invite | Method::Ack) {
+    pub fn new_key_3261(role: Role, method: SipMethod, branch: String) -> Self {
+        let method = if matches!(method, SipMethod::Invite | SipMethod::Ack) {
             None
         } else {
             Some(method)
@@ -130,12 +130,12 @@ pub struct Rfc2543 {
     pub to_tag: Option<String>,
     pub call_id: String,
     pub via_host_port: HostPort,
-    pub method: Option<Method>,
+    pub method: Option<SipMethod>,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Rfc3261 {
     role: Role,
     branch: String,
-    method: Option<Method>,
+    method: Option<SipMethod>,
 }

@@ -97,7 +97,7 @@ pub enum ParseErrorKind {
     #[error("invalid host")]
     Host,
     #[error("invalid sip method")]
-    Method,
+    SipMethod,
     #[error("invalid sip version expected: 'SIP/2.0'")]
     Version,
     #[error("invalid sip uri")]

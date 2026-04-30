@@ -17,7 +17,7 @@ use crate::Result;
 use crate::endpoint::plugin::Plugins;
 use crate::error::Error;
 use crate::message::headers::{CSeq, Header, Headers, Route};
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::message::sip_uri::{Host, HostPort, NameAddr, Uri};
 use crate::message::status_code::StatusCode;
 use crate::message::{ReasonPhrase, Request, Response, StatusLine};
@@ -155,13 +155,13 @@ impl Endpoint {
         let headers = MandatoryHeaders {
             cseq: CSeq::new(
                 response.incoming_info.mandatory_headers.cseq.cseq(),
-                Method::Ack,
+                SipMethod::Ack,
             ),
             ..response.incoming_info.mandatory_headers.clone()
         }
         .into_headers();
 
-        let request = Request::with_headers(Method::Ack, target, headers);
+        let request = Request::with_headers(SipMethod::Ack, target, headers);
         let target_info = outgoing.target_info.clone();
 
         OutgoingRequest {

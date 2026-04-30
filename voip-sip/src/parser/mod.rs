@@ -412,7 +412,7 @@ impl<'buf> SipParser<'buf> {
                     None
                 }
                 param::METHOD_PARAM => {
-                    uri.method_param = pvalue.map(method::Method::from);
+                    uri.method_param = pvalue.map(method::SipMethod::from);
                     None
                 }
                 param::TRANSPORT_PARAM => {

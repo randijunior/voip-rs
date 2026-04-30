@@ -7,7 +7,7 @@ use bytes::Bytes;
 use crate::endpoint::{Endpoint, EndpointBuilder};
 use crate::message::Request;
 use crate::message::headers::{CSeq, CallId, From, Header, Headers, MaxForwards, To, Via};
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::message::sip_uri::Uri;
 use crate::transport::incoming::{IncomingInfo, IncomingRequest, MandatoryHeaders};
 use crate::transport::{Packet, Transport, TransportMessage};
@@ -20,7 +20,7 @@ pub async fn create_test_endpoint() -> Endpoint {
         .unwrap()
 }
 
-fn create_test_headers(method: Method) -> Headers {
+fn create_test_headers(method: SipMethod) -> Headers {
     let branch = crate::generate_branch();
 
     let via = Via::from_str(&format!("SIP/2.0/UDP localhost:5060;branch={branch}")).unwrap();
@@ -40,7 +40,7 @@ fn create_test_headers(method: Method) -> Headers {
     }
 }
 
-pub fn create_test_request(method: Method, transport: Transport) -> IncomingRequest {
+pub fn create_test_request(method: SipMethod, transport: Transport) -> IncomingRequest {
     let headers = create_test_headers(method);
     let target = format!("sip:{}", transport.local_addr());
     let uri = Uri::from_str(&target).unwrap();
@@ -123,7 +123,7 @@ pub mod transaction {
     use super::{create_test_endpoint, create_test_request};
     use crate::endpoint::Endpoint;
     use crate::message::Request;
-    use crate::message::method::Method;
+    use crate::message::method::SipMethod;
     use crate::message::status_code::StatusCode;
     use crate::transaction::client::ClientTransaction;
     use crate::transaction::fsm::{self};
@@ -213,7 +213,7 @@ pub mod transaction {
 
         pub async fn send_ack_request(&mut self) {
             let mut incoming = self.request.clone();
-            incoming.request.req_line.method = Method::Ack;
+            incoming.request.req_line.method = SipMethod::Ack;
             self.send(incoming).await;
         }
 
@@ -282,7 +282,7 @@ pub mod transaction {
     }
 
     impl SendRequestContext {
-        pub async fn setup(method: Method) -> Self {
+        pub async fn setup(method: SipMethod) -> Self {
             let transport = Transport::new(MockTransport::new_udp());
 
             let endpoint = create_test_endpoint().await;
@@ -309,15 +309,15 @@ pub mod transaction {
     }
 
     impl ClientTestContext {
-        pub async fn setup(method: Method) -> Self {
+        pub async fn setup(method: SipMethod) -> Self {
             Self::new(method, MockTransport::new_udp()).await
         }
 
-        pub async fn setup_reliable(method: Method) -> Self {
+        pub async fn setup_reliable(method: SipMethod) -> Self {
             Self::new(method, MockTransport::new_tcp()).await
         }
 
-        async fn new(method: Method, transport: MockTransport) -> Self {
+        async fn new(method: SipMethod, transport: MockTransport) -> Self {
             let transport_impl = Transport::new(transport.clone());
             let timer = TestTimer::new();
 
@@ -336,7 +336,7 @@ pub mod transaction {
             .await
             .expect("failure sending request");
 
-            let expected_state = if method == Method::Invite {
+            let expected_state = if method == SipMethod::Invite {
                 fsm::State::Calling
             } else {
                 fsm::State::Trying
@@ -380,15 +380,15 @@ pub mod transaction {
     }
 
     impl ServerTestContext {
-        pub async fn setup(method: Method) -> Self {
+        pub async fn setup(method: SipMethod) -> Self {
             Self::new(method, MockTransport::new_udp()).await
         }
 
-        pub async fn setup_reliable(method: Method) -> Self {
+        pub async fn setup_reliable(method: SipMethod) -> Self {
             Self::new(method, MockTransport::new_tcp()).await
         }
 
-        async fn new(method: Method, transport: MockTransport) -> Self {
+        async fn new(method: SipMethod, transport: MockTransport) -> Self {
             let transport_impl = Transport::new(transport.clone());
 
             let endpoint = create_test_endpoint().await;

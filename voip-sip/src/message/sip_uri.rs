@@ -1,7 +1,7 @@
 use std::{borrow, fmt, net, ops, str};
 
 use crate::error;
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::message::param::{Param, Params};
 use crate::parser::SipParser;
 use crate::transport::TransportProtocol;
@@ -44,7 +44,7 @@ pub struct Uri {
     /// The user parameter.
     pub user_param: Option<String>,
     /// The method parameter.
-    pub method_param: Option<Method>,
+    pub method_param: Option<SipMethod>,
     /// The transport parameter.
     pub transport_param: Option<TransportProtocol>,
     /// The ttl parameter.
@@ -175,7 +175,7 @@ impl SipUri {
     }
 
     /// Returns the method parameter of the uri.
-    pub fn method_param(&self) -> Option<Method> {
+    pub fn method_param(&self) -> Option<SipMethod> {
         match self {
             SipUri::Uri(uri) => uri.method_param,
             SipUri::NameAddr(addr) => addr.uri.method_param,
@@ -355,7 +355,7 @@ impl UriBuilder {
     }
 
     /// Sets the method parameter of the uri.
-    pub fn method_param(mut self, param: Method) -> Self {
+    pub fn method_param(mut self, param: SipMethod) -> Self {
         self.uri.method_param = Some(param);
         self
     }

@@ -10,7 +10,7 @@ pub mod status_code;
 use std::{borrow, fmt, ops};
 
 use crate::message::headers::Headers;
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::message::sip_uri::Uri;
 use crate::message::status_code::StatusCode;
 
@@ -33,7 +33,7 @@ pub struct Request {
 /// A SIP `Request-Line`.
 #[derive(Clone)]
 pub struct RequestLine {
-    pub method: Method,
+    pub method: SipMethod,
     pub uri: Uri,
 }
 
@@ -130,7 +130,7 @@ impl From<Response> for SipMessage {
 
 impl Request {
     /// Creates a new SIP `Request`.
-    pub fn new(method: Method, uri: Uri) -> Self {
+    pub fn new(method: SipMethod, uri: Uri) -> Self {
         Self {
             req_line: RequestLine { method, uri },
             headers: Headers::new(),
@@ -139,7 +139,7 @@ impl Request {
     }
 
     /// Create a new request with custom headers.
-    pub fn with_headers(method: Method, uri: Uri, headers: Headers) -> Self {
+    pub fn with_headers(method: SipMethod, uri: Uri, headers: Headers) -> Self {
         Self {
             req_line: RequestLine { method, uri },
             headers,

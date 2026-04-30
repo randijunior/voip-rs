@@ -5,7 +5,7 @@ use std::{io, mem};
 use crate::endpoint::EndpointInner;
 use crate::endpoint::plugin::{Plugin, Plugins};
 use crate::message::headers::{Accept, Allow, Header, Supported};
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::transport::tcp::TcpListener;
 use crate::transport::udp::UdpTransport;
 use crate::transport::ws::WebSocketListener;
@@ -88,7 +88,7 @@ impl EndpointBuilder {
         self
     }
 
-    pub fn insert_allow(&mut self, sip_method: Method) {
+    pub fn insert_allow(&mut self, sip_method: SipMethod) {
         self.allow.push(sip_method);
     }
 

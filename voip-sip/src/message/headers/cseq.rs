@@ -2,17 +2,17 @@ use core::fmt;
 use std::str::{self, FromStr};
 
 use crate::error::Result;
-use crate::message::Method;
+use crate::message::SipMethod;
 use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct CSeq {
     cseq: u32,
-    method: Method,
+    method: SipMethod,
 }
 
 impl CSeq {
-    pub fn new(cseq: u32, method: Method) -> Self {
+    pub fn new(cseq: u32, method: SipMethod) -> Self {
         Self { cseq, method }
     }
 
@@ -20,7 +20,7 @@ impl CSeq {
         self.cseq
     }
 
-    pub fn method(&self) -> Method {
+    pub fn method(&self) -> SipMethod {
         self.method
     }
 }
@@ -34,7 +34,7 @@ impl HeaderParse for CSeq {
         parser.skip_ws();
 
         let method = parser.take_alphabetic();
-        let method = Method::from(method);
+        let method = SipMethod::from(method);
 
         Ok(Self { cseq, method })
     }

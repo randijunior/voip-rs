@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::Endpoint;
 use crate::dialog::{DialogId, DialogMessage};
 use crate::endpoint::{self, ReceivedRequest, ReceivedResponse};
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::transport::incoming::IncomingRequest;
 
 #[derive(Default)]
@@ -64,7 +64,7 @@ impl endpoint::Plugin for Ua {
     }
 
     async fn on_receive_request(&self, mut request: ReceivedRequest<'_>, _: &Endpoint) {
-        if request.req_line.method == Method::Cancel {
+        if request.req_line.method == SipMethod::Cancel {
             return;
         }
 

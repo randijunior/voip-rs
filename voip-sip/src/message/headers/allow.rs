@@ -4,11 +4,11 @@ use itertools::Itertools;
 
 use crate::error::Result;
 use crate::macros;
-use crate::message::Method;
+use crate::message::SipMethod;
 use crate::parser::{HeaderParse, SipParser};
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
-pub struct Allow(Vec<Method>);
+pub struct Allow(Vec<SipMethod>);
 
 impl HeaderParse for Allow {
     const NAME: &'static str = "Allow";
@@ -17,7 +17,7 @@ impl HeaderParse for Allow {
         let allow = macros::collect_elems_separated_by_comma!(parser, {
             let method = parser.take_alphabetic();
 
-            Method::from(method)
+            SipMethod::from(method)
         });
 
         Ok(Self(allow))
@@ -25,7 +25,7 @@ impl HeaderParse for Allow {
 }
 
 impl Allow {
-    pub fn push(&mut self, method: Method) {
+    pub fn push(&mut self, method: SipMethod) {
         self.0.push(method);
     }
 }

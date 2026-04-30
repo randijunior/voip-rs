@@ -7,7 +7,7 @@ use tokio_util::either::Either;
 use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
 use crate::message::ReasonPhrase;
-use crate::message::method::Method;
+use crate::message::method::SipMethod;
 use crate::message::status_code::StatusCode;
 use crate::transaction::fsm::{State, StateMachine};
 use crate::transaction::manager::TransactionKey;
@@ -41,11 +41,11 @@ impl ServerTransaction {
     pub fn new(request: IncomingRequest, endpoint: Endpoint) -> Self {
         assert_ne!(
             request.req_line.method,
-            Method::Ack,
+            SipMethod::Ack,
             "ACK requests do not create transactions"
         );
 
-        let initial_state = if request.req_line.method == Method::Invite {
+        let initial_state = if request.req_line.method == SipMethod::Invite {
             State::Proceeding
         } else {
             State::Trying
@@ -151,7 +151,7 @@ impl ServerTransaction {
 
         self.send_response(&mut response).await?;
 
-        if self.request.req_line.method == Method::Invite {
+        if self.request.req_line.method == SipMethod::Invite {
             if let 200..299 = code.as_u16() {
                 self.state_machine.set_state(State::Terminated);
                 return Ok(());
@@ -344,7 +344,7 @@ mod tests {
 
     #[tokio::test]
     async fn invite_transitions_to_proceeding_when_created_from_request() {
-        let mut ctx = ServerTestContext::setup(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Invite).await;
 
         assert_eq_state!(
             ctx.state,
@@ -355,7 +355,7 @@ mod tests {
 
     #[tokio::test]
     async fn invite_transitions_to_confirmed_when_receiving_ack() {
-        let mut ctx = ServerTestContext::setup(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Invite).await;
 
         ctx.server
             .send_final_status(CODE_301_MOVED_PERMANENTLY)
@@ -379,7 +379,7 @@ mod tests {
 
     #[tokio::test]
     async fn invite_unreliable_transitions_to_terminated_when_sending_2xx_response() {
-        let mut ctx = ServerTestContext::setup(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Invite).await;
 
         ctx.server
             .send_final_status(CODE_202_ACCEPTED)
@@ -395,7 +395,7 @@ mod tests {
 
     #[tokio::test]
     async fn invite_reliable_transitions_to_terminated_when_sending_2xx_response() {
-        let mut ctx = ServerTestContext::setup_reliable(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup_reliable(SipMethod::Invite).await;
 
         ctx.server
             .send_final_status(CODE_202_ACCEPTED)
@@ -411,7 +411,7 @@ mod tests {
 
     #[tokio::test]
     async fn invite_should_retransmit_response_when_receiving_request_retransmission() {
-        let ctx = ServerTestContext::setup(Method::Invite).await;
+        let ctx = ServerTestContext::setup(SipMethod::Invite).await;
         let expected_responses = 1;
         let expected_retrans = 3;
 
@@ -431,7 +431,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invite_must_cease_retransmission_when_receiving_ack() {
-        let mut ctx = ServerTestContext::setup(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Invite).await;
         let expected_responses = 1;
         let expected_retrans = 2;
 
@@ -456,7 +456,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invite_timer_h_must_be_set_for_reliable_transports() {
-        let mut ctx = ServerTestContext::setup_reliable(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup_reliable(SipMethod::Invite).await;
 
         ctx.server
             .send_final_status(CODE_301_MOVED_PERMANENTLY)
@@ -480,7 +480,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invite_timer_h_must_be_set_for_unreliable_transports() {
-        let mut ctx = ServerTestContext::setup(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Invite).await;
 
         ctx.server
             .send_final_status(CODE_301_MOVED_PERMANENTLY)
@@ -504,7 +504,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invite_transitions_to_terminated_when_timer_i_fires() {
-        let mut ctx = ServerTestContext::setup(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Invite).await;
 
         ctx.server
             .send_final_status(CODE_301_MOVED_PERMANENTLY)
@@ -536,7 +536,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invite_retransmit_response_when_timer_g_fires() {
-        let mut ctx = ServerTestContext::setup(Method::Invite).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Invite).await;
         let expected_responses = 1;
         let expected_retrans = 5;
 
@@ -558,7 +558,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_transitions_to_trying_when_created_from_request() {
-        let mut ctx = ServerTestContext::setup(Method::Options).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Options).await;
 
         assert_eq_state!(
             ctx.state,
@@ -569,7 +569,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_transition_to_proceeding_when_sending_1xx_response() {
-        let mut ctx = ServerTestContext::setup(Method::Options).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Options).await;
 
         ctx.server
             .send_provisional_status(CODE_100_TRYING)
@@ -585,7 +585,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_transition_to_completed_when_sending_non_2xx_response() {
-        let mut ctx = ServerTestContext::setup(Method::Options).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Options).await;
 
         ctx.server
             .send_final_status(CODE_504_SERVER_TIMEOUT)
@@ -601,7 +601,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_reliable_transition_to_terminated_when_sending_2xx_response() {
-        let mut ctx = ServerTestContext::setup_reliable(Method::Options).await;
+        let mut ctx = ServerTestContext::setup_reliable(SipMethod::Options).await;
 
         ctx.server
             .send_final_status(CODE_202_ACCEPTED)
@@ -617,7 +617,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_reliable_transition_to_terminated_when_sending_non_2xx_response() {
-        let mut ctx = ServerTestContext::setup_reliable(Method::Options).await;
+        let mut ctx = ServerTestContext::setup_reliable(SipMethod::Options).await;
 
         ctx.server
             .send_final_status(CODE_504_SERVER_TIMEOUT)
@@ -633,7 +633,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_absorbs_retransmission_in_trying_state() {
-        let ctx = ServerTestContext::setup(Method::Options).await;
+        let ctx = ServerTestContext::setup(SipMethod::Options).await;
         let expected_retrans = 0;
 
         ctx.client.retransmit_n_times(2).await;
@@ -647,7 +647,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_retransmit_provisional_response_when_receiving_request_retransmission() {
-        let mut ctx = ServerTestContext::setup(Method::Options).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Options).await;
         let expected_responses = 1;
         let expected_retrans = 4;
 
@@ -667,7 +667,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_invite_retransmit_final_response_when_receiving_request_retransmission() {
-        let ctx = ServerTestContext::setup(Method::Register).await;
+        let ctx = ServerTestContext::setup(SipMethod::Register).await;
         let expected_responses = 1;
         let expected_retrans = 2;
 
@@ -687,7 +687,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn non_invite_transitions_to_terminated_when_timer_j_fires() {
-        let mut ctx = ServerTestContext::setup(Method::Bye).await;
+        let mut ctx = ServerTestContext::setup(SipMethod::Bye).await;
 
         ctx.server
             .send_final_status(CODE_202_ACCEPTED)
