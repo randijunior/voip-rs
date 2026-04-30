@@ -112,18 +112,14 @@ impl ClientTransaction {
 
     pub async fn receive_provisional_response(&mut self) -> Result<Option<IncomingResponse>> {
         if self.state() <= State::Proceeding {
-            self.receive_response_if(|res| res.status_line.code.is_provisional())
-                .await
+            self.receive_provisional().await
         } else {
             Ok(None)
         }
     }
 
     pub async fn receive_final_response(mut self) -> Result<IncomingResponse> {
-        let response = self
-            .receive_response_if(|res| res.status_line.code.is_final())
-            .await?
-            .ok_or(Error::ChannelClosed)?;
+        let response = self.receive_final().await?;
 
         if self.request.req_line.method == Method::Invite
             && let 200..299 = response.status_line.code.as_u16()
@@ -172,23 +168,31 @@ impl ClientTransaction {
         Ok(response)
     }
 
-    async fn receive_response_if<F>(&mut self, pred: F) -> Result<Option<IncomingResponse>>
-    where
-        F: Fn(&IncomingResponse) -> bool,
-    {
-        let cond = |msg: &TransactionMessage| matches!(msg, TransactionMessage::Response(response) if pred(response));
+    async fn receive_provisional(&mut self) -> Result<Option<IncomingResponse>> {
+        self.receive_response_if(|res| res.status_line.code.is_provisional())
+            .await
+    }
+
+    async fn receive_final(&mut self) -> Result<IncomingResponse> {
+        self.receive_response_if(|res| res.status_line.code.is_final())
+            .await?
+            .ok_or(Error::ChannelClosed)
+    }
+
+    async fn receive_response_if(
+        &mut self,
+        pred: fn(&IncomingResponse) -> bool,
+    ) -> Result<Option<IncomingResponse>> {
         let deadline = self.timeout;
 
         match self.state() {
             State::Calling | State::Trying if self.is_unreliable() => {
                 let mut retrans_interval = T1;
                 loop {
-                    let fut = time::timeout(retrans_interval, self.channel.recv_if(cond));
+                    let fut = time::timeout(retrans_interval, self.recv_if(pred));
 
                     match time::timeout_at(deadline, fut).await {
-                        Ok(Ok(Some(TransactionMessage::Response(msg)))) => {
-                            return Ok(Some(msg));
-                        }
+                        Ok(Ok(Some(msg))) => return Ok(Some(msg)),
                         Ok(Err(_elapsed)) => {
                             // retransmit
                             self.endpoint.send_request(&mut self.request).await?;
@@ -200,39 +204,43 @@ impl ClientTransaction {
                             return Err(TransactionError::Timeout.into());
                         }
                         Ok(Ok(None)) => return Ok(None),
-                        _ => unimplemented!("only response"),
                     }
                 }
             }
             State::Calling | State::Trying => {
-                match time::timeout_at(deadline, self.channel.recv_if(cond)).await {
-                    Ok(Some(TransactionMessage::Response(msg))) => return Ok(Some(msg)),
+                match time::timeout_at(deadline, self.recv_if(pred)).await {
+                    Ok(Some(msg)) => Ok(Some(msg)),
                     Err(_elapsed) => {
                         self.state_machine.set_state(State::Terminated);
-                        return Err(TransactionError::Timeout.into());
+                        Err(TransactionError::Timeout.into())
                     }
-                    Ok(None) => return Ok(None),
-                    _ => unimplemented!("only response"),
+                    Ok(None) => Ok(None),
                 }
             }
             State::Proceeding if self.request.req_line.method == Method::Invite => {
-                match self.channel.recv_if(cond).await {
-                    Some(TransactionMessage::Response(msg)) => return Ok(Some(msg)),
-                    _ => return Ok(None),
+                match self.recv_if(pred).await {
+                    Some(msg) => Ok(Some(msg)),
+                    _ => Ok(None),
                 }
             }
-            State::Proceeding => {
-                match time::timeout_at(deadline, self.channel.recv_if(cond)).await {
-                    Ok(Some(TransactionMessage::Response(msg))) => return Ok(Some(msg)),
-                    Err(_elapsed) => {
-                        self.state_machine.set_state(State::Terminated);
-                        return Err(TransactionError::Timeout.into());
-                    }
-                    Ok(None) => return Ok(None),
-                    _ => unimplemented!("only response"),
+            State::Proceeding => match time::timeout_at(deadline, self.recv_if(pred)).await {
+                Ok(Some(msg)) => Ok(Some(msg)),
+                Err(_elapsed) => {
+                    self.state_machine.set_state(State::Terminated);
+                    Err(TransactionError::Timeout.into())
                 }
-            }
+                Ok(None) => Ok(None),
+            },
             _ => unreachable!(),
+        }
+    }
+
+    async fn recv_if(&mut self, cond: fn(&IncomingResponse) -> bool) -> Option<IncomingResponse> {
+        let cond = |msg: &TransactionMessage| matches!(msg, TransactionMessage::Response(response) if cond(response));
+
+        match self.channel.recv_if(cond).await {
+            Some(TransactionMessage::Response(res)) => Some(res),
+            _ => None,
         }
     }
 
