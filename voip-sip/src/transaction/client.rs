@@ -129,12 +129,12 @@ impl ClientTransaction {
     pub async fn receive_final_response(mut self) -> Result<IncomingResponse> {
         let response = self.receive_final().await?;
 
-        if self.request.req_line.method == SipMethod::Invite
-            && let 200..299 = response.status_line.code.as_u16()
-            && matches!(
-                self.state_machine.state(),
-                State::Calling | State::Proceeding
-            )
+        let is_invite_tsx = self.request.req_line.method == SipMethod::Invite;
+
+        if self.is_reliable()
+            || (is_invite_tsx
+                && matches!(response.status_line.code.as_u16(), 200..299)
+                && matches!(self.state(), State::Calling | State::Proceeding))
         {
             self.state_machine.set_state(State::Terminated);
             return Ok(response);
@@ -142,13 +142,7 @@ impl ClientTransaction {
 
         self.state_machine.set_state(State::Completed);
 
-        if self.is_reliable() {
-            self.state_machine.set_state(State::Terminated);
-            return Ok(response);
-        }
-
-        if self.request.request.req_line.method == SipMethod::Invite {
-            // send ACK
+        if is_invite_tsx {
             let mut ack_request = self.endpoint.create_ack_request(&self.request, &response);
             self.endpoint.send_request(&mut ack_request).await?;
 
