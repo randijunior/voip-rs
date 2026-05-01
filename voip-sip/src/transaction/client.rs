@@ -111,8 +111,16 @@ impl ClientTransaction {
     }
 
     pub async fn receive_provisional_response(&mut self) -> Result<Option<IncomingResponse>> {
-        if self.state() <= State::Proceeding {
-            self.receive_provisional().await
+        let state = self.state();
+
+        if state <= State::Proceeding {
+            let response = self.receive_provisional().await?;
+
+            if state != State::Proceeding {
+                self.state_machine.set_state(State::Proceeding);
+            }
+
+            Ok(response)
         } else {
             Ok(None)
         }
