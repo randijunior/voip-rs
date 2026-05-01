@@ -142,30 +142,27 @@ impl ClientTransaction {
 
         self.state_machine.set_state(State::Completed);
 
-        if is_invite_tsx {
+        let (timer, mut ack_request) = if is_invite_tsx {
             let mut ack_request = self.endpoint.create_ack_request(&self.request, &response);
             self.endpoint.send_request(&mut ack_request).await?;
 
-            // timer d fires
-            let timer_d = Instant::now() + 64 * T1;
-            tokio::spawn(async move {
-                while let Ok(Some(_)) = time::timeout_at(timer_d, self.channel.recv()).await {
-                    if let Err(err) = self.endpoint.send_request(&mut ack_request).await {
-                        log::error!("Failed to retransmit: {}", err);
-                    }
-                }
-                self.state_machine.set_state(State::Terminated);
-            });
+            (Instant::now() + 64 * T1, Some(ack_request))
         } else {
-            // timer k fires
-            let timer_k = Instant::now() + T4;
-            tokio::spawn(async move {
-                while let Ok(Some(_)) = time::timeout_at(timer_k, self.channel.recv()).await {
-                    // buffer any additional response retransmissions that may be received
+            (Instant::now() + T4, None)
+        };
+
+        tokio::spawn(async move {
+            while let Ok(Some(TransactionMessage::Response(_))) =
+                time::timeout_at(timer, self.channel.recv()).await
+            {
+                if let Some(ref mut ack) = ack_request
+                    && let Err(err) = self.endpoint.send_request(ack).await
+                {
+                    log::error!("Failed to retransmit ack: {}", err);
                 }
-                self.state_machine.set_state(State::Terminated);
-            });
-        }
+            }
+            self.state_machine.set_state(State::Terminated);
+        });
 
         Ok(response)
     }
