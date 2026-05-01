@@ -37,7 +37,6 @@ impl<'a, T: 'a> IntoIterator for &'a OneOrMore<T> {
     }
 }
 
-
 impl<T> IntoIterator for OneOrMore<T> {
     type Item = T;
 

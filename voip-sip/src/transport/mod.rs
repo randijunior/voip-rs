@@ -33,9 +33,7 @@ use crate::error::{Error, Result};
 use crate::message::SipMessage;
 use crate::message::sip_uri::{HostPort, Scheme, Uri};
 use crate::parser::SipParser;
-use crate::resolver::{
-    DefaultResolver, DomainResolver, ServerAddresses, SipHost,
-};
+use crate::resolver::{DefaultResolver, DomainResolver, ServerAddresses, SipHost};
 
 // Core Transport modules
 mod decode;
@@ -368,7 +366,6 @@ impl TransportProtocol {
     pub fn is_unreliable(self) -> bool {
         !self.is_reliable()
     }
-
 
     pub(crate) fn from_naptr_service(service: &[u8]) -> Option<Self> {
         match service {

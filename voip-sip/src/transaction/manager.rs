@@ -1,5 +1,6 @@
 use std::sync;
 
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use tokio::sync::mpsc::{self};
 
 use super::{Role, TransactionMessage};
@@ -13,16 +14,18 @@ type TransactionEntry = mpsc::Sender<TransactionMessage>;
 
 #[derive(Default)]
 pub struct TsxPlugin {
-    transactions: sync::Mutex<rustc_hash::FxHashMap<TransactionKey, TransactionEntry>>,
+    transactions: sync::Mutex<FxHashMap<TransactionKey, TransactionEntry>>,
 }
 
 impl TsxPlugin {
     pub fn with_capacity(capacity: usize) -> Self {
-        let map = rustc_hash::FxHashMap::with_capacity_and_hasher(capacity, rustc_hash::FxBuildHasher);
+        let map = FxHashMap::with_capacity_and_hasher(capacity, FxBuildHasher);
 
-        Self { transactions: sync::Mutex::new(map) }
+        Self {
+            transactions: sync::Mutex::new(map),
+        }
     }
-    
+
     #[inline]
     pub(crate) fn add_transaction(&self, key: TransactionKey, entry: TransactionEntry) {
         let mut map = self.transactions.lock().expect("Lock failed");

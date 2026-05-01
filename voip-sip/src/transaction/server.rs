@@ -22,7 +22,7 @@ pub struct ServerTransaction {
     transaction_key: TransactionKey,
     endpoint: Endpoint,
     state_machine: StateMachine,
-    pub(crate) request: IncomingRequest,
+    request: IncomingRequest,
     receiver: Option<mpsc::Receiver<TransactionMessage>>,
     provisonal_retrans_handle: Option<ProvisionalRetransHandle>,
 }
@@ -38,7 +38,7 @@ impl ServerTransaction {
     /// # Panics
     ///
     /// Panics if request method is `ACK`.
-    pub fn new(request: IncomingRequest, endpoint: Endpoint) -> Self {
+    pub(crate) fn from_request(request: IncomingRequest, endpoint: Endpoint) -> Self {
         assert_ne!(
             request.req_line.method,
             SipMethod::Ack,

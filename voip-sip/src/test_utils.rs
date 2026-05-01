@@ -396,7 +396,7 @@ pub mod transaction {
             let endpoint = create_test_endpoint().await;
             let request = create_test_request(method, transport_impl);
 
-            let mut server = ServerTransaction::new(request.clone(), endpoint.clone());
+            let mut server = ServerTransaction::from_request(request.clone(), endpoint.clone());
 
             let sender = endpoint
                 .transactions()

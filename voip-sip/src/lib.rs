@@ -5,13 +5,13 @@
 
 pub mod dialog;
 pub mod endpoint;
+pub(crate) mod error;
+pub mod macros;
 pub mod message;
+pub(crate) mod parser;
 pub mod resolver;
 pub mod transaction;
-pub mod macros;
-pub(crate) mod parser;
 pub(crate) mod transport;
-pub(crate) mod error;
 
 pub use endpoint::Endpoint;
 pub use error::Result;
@@ -27,11 +27,12 @@ extern crate assert_matches;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
-use error::Error;
 use std::fmt::{self, Debug};
 use std::str::{
     FromStr, {self},
 };
+
+use error::Error;
 
 /// Branch parameter prefix defined in RFC3261.
 pub(crate) const RFC3261_BRANCH_ID: &str = "z9hG4bK";

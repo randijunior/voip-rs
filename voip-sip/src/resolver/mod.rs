@@ -9,7 +9,6 @@ use utils::OneOrMore;
 use crate::message::sip_uri::{Host, HostPort};
 use crate::transport::TransportProtocol;
 
-
 type IoResult<T> = io::Result<T>;
 
 #[async_trait::async_trait]
@@ -33,21 +32,18 @@ impl SipDomainResolver for DefaultResolver {
         let socket_addr = match target.host_port.host {
             Host::HostName(ref host_name) => {
                 let host = format!("{}:{}", host_name, port);
-                
+
                 let mut iter_addr = net::lookup_host(host).await?;
 
                 let Some(addr) = iter_addr.next() else {
                     return Err(io::Error::other(format!(
                         "No address found for '{host_name}'"
-                    )))
+                    )));
                 };
 
                 addr
             }
-            Host::IpAddr(ip_addr) => {
-
-                SocketAddr::new(ip_addr, port)
-            }
+            Host::IpAddr(ip_addr) => SocketAddr::new(ip_addr, port),
         };
 
         let addresses = OneOrMore::one(LookupAddress {

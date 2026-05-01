@@ -34,7 +34,7 @@ impl Via {
         transport: TransportProtocol,
         sent_by: HostPort,
         branch: Option<String>,
-        rport: Option<Rport>
+        rport: Option<Rport>,
     ) -> Self {
         Self {
             transport,

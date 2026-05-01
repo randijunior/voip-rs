@@ -93,9 +93,9 @@ pub use subject::Subject;
 pub use supported::Supported;
 pub use timestamp::Timestamp;
 pub use to::To;
-pub use via::Via;
 pub use unsupported::Unsupported;
 pub use user_agent::UserAgent;
+pub use via::Via;
 pub use warning::Warning;
 pub use www_authenticate::WWWAuthenticate;
 
@@ -170,7 +170,7 @@ impl Headers {
         self.0.push(hdr);
     }
 
-    pub fn insert_mut(&mut self, index: usize, hdr: Header)  ->  &mut Header {
+    pub fn insert_mut(&mut self, index: usize, hdr: Header) -> &mut Header {
         self.0.insert_mut(index, hdr)
     }
 

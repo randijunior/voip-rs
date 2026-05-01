@@ -22,15 +22,15 @@ use crate::message::sip_uri::{Host, HostPort, NameAddr, Uri};
 use crate::message::status_code::StatusCode;
 use crate::message::{ReasonPhrase, Request, Response, StatusLine};
 use crate::resolver::{LookupAddress, SipHost};
-use crate::transaction::ClientTransaction;
 use crate::transaction::manager::TsxPlugin;
+use crate::transaction::{ClientTransaction, ServerTransaction};
 use crate::transport::incoming::{IncomingRequest, IncomingResponse, MandatoryHeaders};
 use crate::transport::outgoing::{
     Encode, OutgoingDestInfo, OutgoingRequest, OutgoingResponse, TargetTransportInfo,
 };
 use crate::transport::{Transport, TransportLayer};
 
-pub(crate) struct EndpointInner {
+struct EndpointInner {
     /// The transport layer for the endpoint.
     transport: TransportLayer,
     /// The name of the endpoint.
@@ -54,9 +54,6 @@ pub struct Endpoint {
 pub(crate) struct WeakEndpointHandle(sync::Weak<EndpointInner>);
 
 impl Endpoint {
-    pub(crate) fn from_inner(inner: Arc<EndpointInner>) -> Self {
-        Self { inner }
-    }
     pub fn builder() -> EndpointBuilder {
         EndpointBuilder::default()
     }
@@ -171,8 +168,16 @@ impl Endpoint {
         }
     }
 
+    pub async fn send_request(&self, request: Request) -> Result<ClientTransaction> {
+        ClientTransaction::send_request(request, self.clone()).await
+    }
+
+    pub fn accept_request(&self, request: IncomingRequest) -> ServerTransaction {
+        ServerTransaction::from_request(request, self.clone())
+    }
+
     /// Send the request.
-    pub async fn send_request(&self, request: &mut OutgoingRequest) -> Result<()> {
+    pub async fn send_outgoing_request(&self, request: &mut OutgoingRequest) -> Result<()> {
         if request.encoded.is_empty() {
             request.encoded = request.encode()?;
         }
@@ -192,15 +197,12 @@ impl Endpoint {
             .target_info
             .transport
             .send_msg(&request.encoded, &request.target_info.target)
-            .await {
-                log::error!("Failed to send request: {}", err);
-            }
+            .await
+        {
+            log::error!("Failed to send request: {}", err);
+        }
 
         Ok(())
-    }
-
-    pub async fn send_outgoing_request(&self, request: Request) -> Result<ClientTransaction> {
-        ClientTransaction::send_request(request, self.clone()).await
     }
 
     pub async fn send_outgoing_response(&self, response: &mut OutgoingResponse) -> Result<()> {
@@ -490,6 +492,10 @@ impl Endpoint {
 
     pub(crate) fn dialogs(&self) -> &crate::dialog::Ua {
         self.plugin::<crate::dialog::Ua>()
+    }
+
+    fn from_inner(inner: Arc<EndpointInner>) -> Self {
+        Self { inner }
     }
 }
 

@@ -82,7 +82,7 @@ impl ClientTransaction {
         };
         let key = TransactionKey::new_key_3261(Role::UAC, method, branch);
 
-        endpoint.send_request(&mut outgoing).await?;
+        endpoint.send_outgoing_request(&mut outgoing).await?;
 
         let state = if method == SipMethod::Invite {
             State::Calling
@@ -141,7 +141,9 @@ impl ClientTransaction {
 
         let (timer, mut ack_request) = if is_invite_tsx {
             let mut ack_request = self.endpoint.create_ack_request(&self.request, &response);
-            self.endpoint.send_request(&mut ack_request).await?;
+            self.endpoint
+                .send_outgoing_request(&mut ack_request)
+                .await?;
 
             (Instant::now() + 64 * T1, Some(ack_request))
         } else {
@@ -153,7 +155,7 @@ impl ClientTransaction {
                 time::timeout_at(timer, self.channel.recv()).await
             {
                 if let Some(ref mut ack) = ack_request
-                    && let Err(err) = self.endpoint.send_request(ack).await
+                    && let Err(err) = self.endpoint.send_outgoing_request(ack).await
                 {
                     log::error!("Failed to retransmit ack: {}", err);
                 }
@@ -191,7 +193,9 @@ impl ClientTransaction {
                         Ok(Ok(Some(msg))) => return Ok(Some(msg)),
                         Ok(Err(_elapsed)) => {
                             // retransmit
-                            self.endpoint.send_request(&mut self.request).await?;
+                            self.endpoint
+                                .send_outgoing_request(&mut self.request)
+                                .await?;
                             retrans_interval *= 2;
                             continue;
                         }
