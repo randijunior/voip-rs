@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 
-use futures_util::future::Either;
 use tokio::sync::mpsc::{self};
 use tokio::time::{self, Instant};
 use utils::PeekableReceiver;
@@ -17,8 +16,6 @@ use crate::transport::Transport;
 use crate::transport::incoming::IncomingResponse;
 use crate::transport::outgoing::OutgoingRequest;
 use crate::{Endpoint, Result, find_map_mut_header};
-
-// ACK para 2xx é responsabilidade do TU.
 
 /// A Client Transaction.
 ///
