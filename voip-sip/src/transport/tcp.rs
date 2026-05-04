@@ -16,9 +16,6 @@ use super::{
 use crate::error::{Error, Result};
 use crate::transport::TransportLayer;
 
-type TcpFrameRead = FramedRead<ReadHalf<TcpStream>, StreamingDecoder>;
-type TcpAccept = (TcpStream, SocketAddr);
-
 /// TCP transport implementation.
 ///
 /// The [`TcpTransport`] represents a single reliable, connection-oriented transport
@@ -133,13 +130,13 @@ impl TcpListener {
         while let Ok((stream, addr)) = self.listener.accept().await {
             log::debug!("Got incoming TCP connection from {}", addr);
             // Spawn a new task to handle the connection.
-            tokio::spawn(Self::on_accept_complete((stream, addr), transports.clone()));
+            tokio::spawn(Self::on_accepted((stream, addr), transports.clone()));
         }
         Ok(())
     }
 
-    async fn on_accept_complete(
-        (stream, addr): TcpAccept,
+    async fn on_accepted(
+        (stream, addr): (TcpStream, SocketAddr),
         transports: TransportLayer,
     ) -> Result<()> {
         let bind_addr = stream.local_addr()?;
@@ -167,7 +164,7 @@ impl TcpListener {
 }
 
 async fn tcp_read(
-    mut framed: TcpFrameRead,
+    mut framed: FramedRead<ReadHalf<TcpStream>, StreamingDecoder>,
     peer: SocketAddr,
     transport: Transport,
     transports: TransportLayer,

@@ -57,11 +57,8 @@ pub const MSG_HEADERS_END: &[u8] = b"\r\n\r\n";
 pub struct TransportLayer {
     endpoint: WeakEndpointHandle,
     resolver: DomainResolver,
-    transports: TransportsMap,
+    transports: Arc<Mutex<rustc_hash::FxHashMap<TransportKey, Transport>>>,
 }
-
-#[derive(Default, Clone)]
-struct TransportsMap(Arc<Mutex<rustc_hash::FxHashMap<TransportKey, Transport>>>);
 
 /// A wrapper around a SIP transport implementation.
 #[derive(Clone)]
@@ -154,23 +151,23 @@ impl TransportLayer {
     pub fn new(endpoint: WeakEndpointHandle) -> Self {
         Self {
             endpoint,
-            transports: TransportsMap::default(),
+            transports: Default::default(),
             resolver: DomainResolver::from(DefaultResolver),
         }
     }
 
     /// Add a new transport to the transports.
     pub fn register_transport(&self, key: TransportKey, value: Transport) {
-        self.transports.insert(key, value);
+        self.insert(key, value);
     }
 
     /// Remove a transport by its key.
     pub fn remove_transport(&self, key: &TransportKey) {
-        self.transports.remove(key);
+        self.remove(key);
     }
 
     pub fn get_transport(&self, key: &TransportKey) -> Option<Transport> {
-        self.transports.get(key)
+        self.get(key)
     }
 
     pub async fn select_transport(
@@ -282,34 +279,22 @@ impl TransportLayer {
     pub fn resolver(&self) -> &DomainResolver {
         &self.resolver
     }
-}
 
-impl Default for TransportLayer {
-    fn default() -> Self {
-        Self {
-            endpoint: Default::default(),
-            resolver: DomainResolver::from(DefaultResolver),
-            transports: Default::default(),
-        }
-    }
-}
-
-impl TransportsMap {
-    pub fn insert(&self, key: TransportKey, value: Transport) {
-        let mut map = self.0.lock().expect("Lock failed");
+    fn insert(&self, key: TransportKey, value: Transport) {
+        let mut map = self.transports.lock().expect("Lock failed");
 
         map.insert(key, value);
     }
 
     /// Remove a transport by its key.
-    pub fn remove(&self, key: &TransportKey) {
-        let mut map = self.0.lock().expect("Lock failed");
+    fn remove(&self, key: &TransportKey) {
+        let mut map = self.transports.lock().expect("Lock failed");
 
         map.remove(key);
     }
 
-    pub fn get(&self, key: &TransportKey) -> Option<Transport> {
-        let map = self.0.lock().expect("Lock failed");
+    fn get(&self, key: &TransportKey) -> Option<Transport> {
+        let map = self.transports.lock().expect("Lock failed");
 
         if let Some(transport) = map.get(key) {
             return Some(transport.clone());
@@ -335,6 +320,16 @@ impl TransportsMap {
         }
 
         None
+    }
+}
+
+impl Default for TransportLayer {
+    fn default() -> Self {
+        Self {
+            endpoint: Default::default(),
+            resolver: DomainResolver::from(DefaultResolver),
+            transports: Default::default(),
+        }
     }
 }
 

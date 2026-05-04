@@ -1,7 +1,8 @@
 use std::future;
 
 use tokio::sync::mpsc::{self};
-use tokio::time::{Instant, sleep, timeout_at};
+use tokio::task;
+use tokio::time::{self, Instant};
 use tokio_util::either::Either;
 
 use crate::endpoint::Endpoint;
@@ -25,11 +26,6 @@ pub struct ServerTransaction {
     request: IncomingRequest,
     receiver: Option<mpsc::Receiver<TransactionMessage>>,
     provisonal_retrans_handle: Option<ProvisionalRetransHandle>,
-}
-
-struct ProvisionalRetransHandle {
-    join_handle: tokio::task::JoinHandle<mpsc::Receiver<TransactionMessage>>,
-    provisional_tx: mpsc::UnboundedSender<OutgoingResponse>,
 }
 
 impl ServerTransaction {
@@ -151,86 +147,76 @@ impl ServerTransaction {
 
         self.send_response(&mut response).await?;
 
-        if self.request.req_line.method == SipMethod::Invite {
-            if let 200..299 = code.as_u16() {
-                self.state_machine.set_state(State::Terminated);
-                return Ok(());
-            }
-            // 300-699 from TU send response --> Completed
-            self.state_machine.set_state(State::Completed);
+        let is_invite_tsx = self.request.req_line.method == SipMethod::Invite;
 
-            let mut channel = if let Some(task) = self.provisonal_retrans_handle.take() {
-                task.join_handle.await.unwrap()
-            } else {
-                self.receiver.take().unwrap()
-            };
+        if self.is_reliable() || (is_invite_tsx && matches!(code.as_u16(), 200..299)) {
+            self.state_machine.set_state(State::Terminated);
+            return Ok(());
+        }
 
+        // 300-699 from TU send response --> Completed
+        self.state_machine.set_state(State::Completed);
+
+        let mut channel = if let Some(task) = self.provisonal_retrans_handle.take() {
+            task.join_handle.await.unwrap()
+        } else {
+            self.receiver.take().unwrap()
+        };
+
+        if is_invite_tsx {
             // For unreliable transports.
             let timer_g = if !self.is_reliable() {
-                Either::Left(sleep(T1))
+                Either::Left(time::sleep(T1))
             } else {
                 Either::Right(future::pending::<()>())
             };
+
             // For all transports.
-            let timer_h = sleep(64 * T1);
-            let mut retrans_count = 0;
+            let timer_h = time::sleep(64 * T1);
+            let mut retrans_count = 0u32;
+
             tokio::spawn(async move {
                 tokio::pin!(timer_g);
                 tokio::pin!(timer_h);
+
                 loop {
                     tokio::select! {
-                        _ = timer_g.as_mut() => {
-                           let _res =  self.endpoint
-                            .send_outgoing_response(&mut response)
-                            .await;
-                        retrans_count += 1;
+                        _ = &mut timer_g => {
+                            if let Err(err) = self.send_response(&mut response).await {
+                                log::error!("Failed to retransmit ack: {}", err);
+                            } else {
+                                retrans_count += 1;
+                                let new_timer = T1 * (1 << retrans_count);
+                                let new_timer = std::cmp::min(new_timer, T2);
+                                let sleep = time::sleep(new_timer);
 
-                        let new_timer = T1 * (1 << retrans_count);
-                        let sleep = sleep(std::cmp::min(new_timer, T2));
-
-                        timer_g.set(Either::Left(sleep));
-
-                        continue;
-
+                                timer_g.set(Either::Left(sleep));
+                            }
+                            continue;
                         }
-                        _ = timer_h.as_mut() => {
+                        _ = &mut timer_h => {
                             // Timeout
                             self.state_machine.set_state(State::Terminated);
-                            return;
+                            break;
                         }
-                         Some(TransactionMessage::Request(req)) = channel.recv() => {
-                            if req.request.req_line.method.is_ack() {
+                        Some(TransactionMessage::Request(req)) = channel.recv() => {
+                            if let SipMethod::Ack = req.req_line.method {
                                 self.state_machine.set_state(State::Confirmed);
-                                sleep(T4).await;
+                                time::sleep(T4).await;
                                 self.state_machine.set_state(State::Terminated);
-                                return;
+                                break;
+                            } else if let Err(err) = self.send_response(&mut response).await {
+                                log::error!("Failed to retransmit: {}", err);
                             }
-                            let _res =  self.endpoint
-                            .send_outgoing_response(&mut response)
-                            .await;
                         }
                     }
                 }
             });
         } else {
-            // 200-699 from TU send response --> Completed
-            self.state_machine.set_state(State::Completed);
-
-            if self.is_reliable() {
-                self.state_machine.set_state(State::Terminated);
-                return Ok(());
-            }
-
-            let mut channel = if let Some(task) = self.provisonal_retrans_handle.take() {
-                task.join_handle.await.unwrap()
-            } else {
-                self.receiver.take().unwrap()
-            };
-
             let timer_j = Instant::now() + 64 * T1;
 
             tokio::spawn(async move {
-                while let Ok(Some(_)) = timeout_at(timer_j, channel.recv()).await {
+                while let Ok(Some(_)) = time::timeout_at(timer_j, channel.recv()).await {
                     if let Err(err) = self.send_response(&mut response).await {
                         log::error!("Failed to send response: {}", err);
                     }
@@ -251,15 +237,9 @@ impl ServerTransaction {
             .create_outgoing_response(&self.request, code, phrase)
     }
 
+    #[cfg(test)]
     pub(crate) fn transaction_key(&self) -> &TransactionKey {
         &self.transaction_key
-    }
-
-    pub(crate) fn sender(&self) -> mpsc::Sender<TransactionMessage> {
-        self.endpoint
-            .transactions()
-            .get_entry(&self.transaction_key)
-            .expect("Must Exists entry")
     }
 
     pub fn state_machine_mut(&mut self) -> &mut StateMachine {
@@ -320,6 +300,11 @@ impl ServerTransaction {
             join_handle,
         }
     }
+}
+
+struct ProvisionalRetransHandle {
+    join_handle: task::JoinHandle<mpsc::Receiver<TransactionMessage>>,
+    provisional_tx: mpsc::UnboundedSender<OutgoingResponse>,
 }
 
 impl Drop for ServerTransaction {
