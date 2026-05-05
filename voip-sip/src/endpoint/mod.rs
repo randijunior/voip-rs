@@ -77,7 +77,7 @@ impl Endpoint {
 
     /// Creates a new SIP response based on an incoming
     /// request.
-    pub fn create_outgoing_response(
+    pub fn create_response(
         &self,
         request: &IncomingRequest,
         code: StatusCode,
@@ -186,7 +186,7 @@ impl Endpoint {
             "Sending Request {} {} to /{}",
             request.request.req_line.method,
             request.request.req_line.uri,
-            request.target_info.target
+            request.target_info.socket_addr
         );
 
         for plugin in self.inner.plugins.plugins() {
@@ -196,7 +196,7 @@ impl Endpoint {
         if let Err(err) = request
             .target_info
             .transport
-            .send_msg(&request.encoded, &request.target_info.target)
+            .send_msg(&request.encoded, &request.target_info.socket_addr)
             .await
         {
             log::error!("Failed to send request: {}", err);
@@ -229,9 +229,10 @@ impl Endpoint {
     async fn send_response(&self, response: &mut OutgoingResponse) -> Result<()> {
         let target = &mut response.dest_info;
 
-        if let Some((transport, dest_addr)) = &target.transport
-            && transport
-                .send_msg(&response.encoded, dest_addr)
+        if let Some(target_info) = &target.transport
+            && target_info
+                .transport
+                .send_msg(&response.encoded, &target_info.socket_addr)
                 .await
                 .is_ok()
         {
@@ -249,11 +250,11 @@ impl Endpoint {
         for addr in addresses {
             let LookupAddress {
                 socket_addr,
-                transport,
+                protocol,
             } = addr;
             let transport = match self
                 .transports()
-                .select_transport(socket_addr, transport)
+                .select_transport(socket_addr, protocol)
                 .await
             {
                 Ok(selected) => selected,
@@ -265,7 +266,10 @@ impl Endpoint {
                 .await
                 .is_ok()
             {
-                target.transport = Some((transport, socket_addr));
+                target.transport = Some(TargetTransportInfo {
+                    transport,
+                    socket_addr,
+                });
                 return Ok(());
             }
         }
@@ -298,7 +302,10 @@ impl Endpoint {
 
             return OutgoingDestInfo {
                 host_port: (host, source_transport.protocol()),
-                transport: Some((source_transport.clone(), source_addr)),
+                transport: Some(TargetTransportInfo {
+                    transport: source_transport.clone(),
+                    socket_addr: source_addr,
+                }),
             };
         }
 
@@ -321,7 +328,10 @@ impl Endpoint {
 
             return OutgoingDestInfo {
                 host_port: (socket_addr.into(), source_transport.protocol()),
-                transport: Some((source_transport.clone(), socket_addr)),
+                transport: Some(TargetTransportInfo {
+                    transport: source_transport.clone(),
+                    socket_addr,
+                }),
             };
         }
 
@@ -379,7 +389,7 @@ impl Endpoint {
         mut request: Request,
         target: Option<(Transport, SocketAddr)>,
     ) -> Result<OutgoingRequest> {
-        let (transport, target) = 'label: {
+        let (transport, socket_addr) = 'label: {
             if let Some(target) = target {
                 target
             } else {
@@ -389,12 +399,12 @@ impl Endpoint {
                 for addr in addrs {
                     let LookupAddress {
                         socket_addr,
-                        transport,
+                        protocol,
                     } = addr;
 
                     match self
                         .transports()
-                        .select_transport(socket_addr, transport)
+                        .select_transport(socket_addr, protocol)
                         .await
                     {
                         Ok(selected) => break 'label (selected, socket_addr),
@@ -411,10 +421,13 @@ impl Endpoint {
         log::debug!(
             "Resolved target: transport={}, addr={}",
             transport.protocol(),
-            target
+            socket_addr
         );
 
-        let target_info = TargetTransportInfo { target, transport };
+        let target_info = TargetTransportInfo {
+            socket_addr,
+            transport,
+        };
 
         Ok(OutgoingRequest {
             request,

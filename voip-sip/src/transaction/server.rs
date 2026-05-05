@@ -1,9 +1,6 @@
-use std::future;
-
 use tokio::sync::mpsc::{self};
 use tokio::task;
 use tokio::time::{self, Instant};
-use tokio_util::either::Either;
 
 use crate::endpoint::Endpoint;
 use crate::error::{Error, Result};
@@ -14,7 +11,7 @@ use crate::transaction::fsm::{State, StateMachine};
 use crate::transaction::manager::TransactionKey;
 use crate::transaction::{T1, T2, T4, TransactionMessage};
 use crate::transport::incoming::IncomingRequest;
-use crate::transport::outgoing::OutgoingResponse;
+use crate::transport::outgoing::{OutgoingResponse};
 
 /// A Server Transaction.
 ///
@@ -47,8 +44,8 @@ impl ServerTransaction {
             State::Trying
         };
         let state_machine = StateMachine::new(initial_state);
-
         let (sender, receiver) = mpsc::channel(10);
+
         let transaction_key = TransactionKey::from_request(&request);
 
         endpoint
@@ -70,12 +67,12 @@ impl ServerTransaction {
     /// This is a shortcut for:
     ///
     /// ```no_run
-    /// let response = transaction.create_outgoing_response(status, None);
+    /// let response = transaction.create_response(status, None);
     /// transaction.send_provisional_response(response).await;
     /// ```
     /// See [`send_provisional_response`](Self::send_provisional_response) for more info.
     pub async fn send_provisional_status(&mut self, status: StatusCode) -> Result<()> {
-        let response = self.create_outgoing_response(status, None);
+        let response = self.create_response(status, None);
 
         self.send_provisional_response(response).await?;
 
@@ -119,12 +116,12 @@ impl ServerTransaction {
     /// This is a shortcut for:
     ///
     /// ```no_run
-    /// let response = transaction.create_outgoing_response(status, None);
+    /// let response = transaction.create_response(status, None);
     /// transaction.send_final_response(response).await;
     /// ```
     /// See [`send_final_response`](Self::send_final_response) for more info.
     pub async fn send_final_status(self, status: StatusCode) -> Result<()> {
-        let response = self.create_outgoing_response(status, None);
+        let response = self.create_response(status, None);
 
         self.send_final_response(response).await?;
 
@@ -144,18 +141,28 @@ impl ServerTransaction {
             "Invalid final response (expected 2xx-6xx) got {:?}",
             code
         );
+        let is_invite_tsx = self.request.req_line.method == SipMethod::Invite;
 
         self.send_response(&mut response).await?;
 
-        let is_invite_tsx = self.request.req_line.method == SipMethod::Invite;
-
-        if self.is_reliable() || (is_invite_tsx && matches!(code.as_u16(), 200..299)) {
-            self.state_machine.set_state(State::Terminated);
+        // INVITE - 2xx from TU send response --> Terminated
+        if is_invite_tsx && matches!(code.as_u16(), 200..299) {
+            self.set_state(State::Terminated);
             return Ok(());
         }
 
-        // 300-699 from TU send response --> Completed
-        self.state_machine.set_state(State::Completed);
+        // INVITE - 300-699 from TU send response --> Completed
+        // non-INVITE - 200-699 from TU send response --> Completed
+        self.set_state(State::Completed);
+
+        // non-INVITE
+        // When the server transaction enters the "Completed" state, it MUST set
+        // Timer J to fire in 64*T1 seconds for unreliable transports, and zero
+        // seconds for reliable transports.
+        if !is_invite_tsx && self.is_reliable() {
+            self.set_state(State::Terminated);
+            return Ok(());
+        }
 
         let mut channel = if let Some(task) = self.provisonal_retrans_handle.take() {
             task.join_handle.await.unwrap()
@@ -163,83 +170,71 @@ impl ServerTransaction {
             self.receiver.take().unwrap()
         };
 
-        if is_invite_tsx {
-            // For unreliable transports.
-            let timer_g = if !self.is_reliable() {
-                Either::Left(time::sleep(T1))
-            } else {
-                Either::Right(future::pending::<()>())
-            };
+        // timer_h/timer_j
+        let deadline = Instant::now() + T1 * 64;
 
-            // For all transports.
-            let timer_h = time::sleep(64 * T1);
-            let mut retrans_count = 0u32;
-
+        if is_invite_tsx && !self.is_reliable() {
             tokio::spawn(async move {
-                tokio::pin!(timer_g);
-                tokio::pin!(timer_h);
-
+                let mut retrans_interval = T1;
                 loop {
-                    tokio::select! {
-                        _ = &mut timer_g => {
-                            if let Err(err) = self.send_response(&mut response).await {
-                                log::error!("Failed to retransmit ack: {}", err);
-                            } else {
-                                retrans_count += 1;
-                                let new_timer = T1 * (1 << retrans_count);
-                                let new_timer = std::cmp::min(new_timer, T2);
-                                let sleep = time::sleep(new_timer);
+                    let fut = time::timeout(retrans_interval, channel.recv());
 
-                                timer_g.set(Either::Left(sleep));
-                            }
-                            continue;
-                        }
-                        _ = &mut timer_h => {
-                            // Timeout
-                            self.state_machine.set_state(State::Terminated);
+                    match time::timeout_at(deadline, fut).await {
+                        Ok(Ok(Some(TransactionMessage::Request(req))))
+                            if req.req_line.method == SipMethod::Ack =>
+                        {
+                            self.set_state(State::Confirmed);
+                            time::sleep(T4).await;
+                            self.set_state(State::Terminated);
                             break;
                         }
-                        Some(TransactionMessage::Request(req)) = channel.recv() => {
-                            if let SipMethod::Ack = req.req_line.method {
-                                self.state_machine.set_state(State::Confirmed);
-                                time::sleep(T4).await;
-                                self.state_machine.set_state(State::Terminated);
-                                break;
-                            } else if let Err(err) = self.send_response(&mut response).await {
-                                log::error!("Failed to retransmit: {}", err);
-                            }
+                        Ok(Ok(Some(_msg))) => {
+                            _ = self.send_response(&mut response).await;
+                            continue;
                         }
+                        Ok(Err(_elapsed)) => {
+                            // retransmit
+                            _ = self.send_response(&mut response).await;
+                            retrans_interval = std::cmp::min(retrans_interval * 2, T2);
+                            continue;
+                        }
+                        Err(_elapsed) => {
+                            self.set_state(State::Terminated);
+                            break;
+                        }
+                        Ok(Ok(None)) => break,
                     }
                 }
             });
         } else {
-            let timer_j = Instant::now() + 64 * T1;
-
             tokio::spawn(async move {
-                while let Ok(Some(_)) = time::timeout_at(timer_j, channel.recv()).await {
+                while let Ok(Some(_)) = time::timeout_at(deadline, channel.recv()).await {
                     if let Err(err) = self.send_response(&mut response).await {
                         log::error!("Failed to send response: {}", err);
                     }
                 }
-                self.state_machine.set_state(State::Terminated);
+                self.set_state(State::Terminated);
             });
         }
 
         Ok(())
     }
 
-    pub fn create_outgoing_response(
+    pub fn create_response(
         &self,
         code: StatusCode,
-        phrase: Option<ReasonPhrase>,
+        reason: Option<ReasonPhrase>,
     ) -> OutgoingResponse {
-        self.endpoint
-            .create_outgoing_response(&self.request, code, phrase)
+        self.endpoint.create_response(&self.request, code, reason)
     }
 
     #[cfg(test)]
     pub(crate) fn transaction_key(&self) -> &TransactionKey {
         &self.transaction_key
+    }
+
+    fn set_state(&mut self, state: State) {
+        self.state_machine.set_state(state);
     }
 
     pub fn state_machine_mut(&mut self) -> &mut StateMachine {
@@ -267,7 +262,7 @@ impl ServerTransaction {
             "Transaction receiver missing while calling `spawn_retransmit_provisional_task`",
         );
 
-        self.state_machine.set_state(State::Proceeding);
+        self.set_state(State::Proceeding);
 
         let mut state_rx = self.state_machine.subscribe_state();
         let (provisional_tx, mut tu_provisional_rx) = mpsc::unbounded_channel();
@@ -350,7 +345,7 @@ mod tests {
         assert_eq_state!(
             ctx.state,
             State::Completed,
-            "server INVITE must transition to the Completed state when sending 200-699 response"
+            "server INVITE must transition to the Completed state when sending 300-699 response"
         );
 
         ctx.client.send_ack_request().await;

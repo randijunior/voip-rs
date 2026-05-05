@@ -21,13 +21,13 @@ pub struct DefaultResolver;
 #[async_trait::async_trait]
 impl SipDomainResolver for DefaultResolver {
     async fn resolve(&self, target: &SipHost) -> IoResult<ServerAddresses> {
-        let transport = match target.protocol {
+        let protocol = match target.protocol {
             Some(protocol) => protocol,
             None => TransportProtocol::Udp,
         };
         let port = match target.host_port.port {
             Some(port) => port,
-            None => transport.default_port(),
+            None => protocol.default_port(),
         };
         let socket_addr = match target.host_port.host {
             Host::HostName(ref host_name) => {
@@ -48,7 +48,7 @@ impl SipDomainResolver for DefaultResolver {
 
         let addresses = OneOrMore::one(LookupAddress {
             socket_addr,
-            transport,
+            protocol,
         });
 
         Ok(ServerAddresses { addresses })
@@ -80,7 +80,7 @@ pub struct SipHost {
 
 pub struct LookupAddress {
     pub socket_addr: SocketAddr,
-    pub transport: TransportProtocol,
+    pub protocol: TransportProtocol,
 }
 
 pub struct ServerAddresses {

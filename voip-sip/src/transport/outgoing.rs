@@ -27,20 +27,21 @@ pub struct OutgoingResponse {
     /// The SIP response.
     pub response: Response,
     /// Metadata about how the message will be sent.
-    pub dest_info: OutgoingDestInfo,
+    pub(crate) dest_info: OutgoingDestInfo,
     /// Message encoded representation.
-    pub encoded: Bytes,
+    pub(crate) encoded: Bytes,
 }
 
+#[derive(Clone)]
 pub struct OutgoingDestInfo {
     pub host_port: (HostPort, TransportProtocol),
-    pub transport: Option<(Transport, SocketAddr)>,
+    pub transport: Option<TargetTransportInfo>,
 }
 
 impl fmt::Display for OutgoingDestInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some((_, addr)) = self.transport {
-            write!(f, "{addr}")?;
+        if let Some(TargetTransportInfo { socket_addr, .. }) = self.transport {
+            write!(f, "{socket_addr}")?;
         } else {
             write!(f, "{}", self.host_port.0.host)?;
         }
@@ -86,7 +87,7 @@ impl ops::DerefMut for OutgoingResponse {
 #[derive(Clone)]
 pub struct TargetTransportInfo {
     /// The socket this message should be sent to.
-    pub target: SocketAddr,
+    pub socket_addr: SocketAddr,
     /// The transport to use for sending the message.
     pub transport: Transport,
 }
