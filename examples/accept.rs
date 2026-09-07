@@ -54,7 +54,7 @@ impl endpoint::Plugin for Acceptor {
 }
 
 async fn session_evt_loop(mut session: Session<Established>) {
-    while let Some(evt) = session.next_event().await {
+    while let Ok(evt) = session.next_event().await {
         match evt {
             SessionEvent::Terminated(cause) => {
                 println!("Terminated, cause = {cause:#?}");
