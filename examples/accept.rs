@@ -9,9 +9,9 @@ use rssip::message::SipBody;
 use rssip::message::headers::Contact;
 use rssip::message::method::SipMethod;
 use rssip::message::status_code::StatusCode;
-use rssip::ua::dialog::DialogPlugin;
-use rssip::ua::session::{Established, Session, SessionEvent};
 use rssip::transaction::TsxPlugin;
+use rssip::ua::dialog::DialogPlugin;
+use rssip::ua::session::{Established, Session, SessionEvent, SignalingEvent};
 use rssip::utils::local_ip::get_local_ip_addr;
 use tracing::Level;
 use tracing_subscriber::fmt::time::ChronoLocal;
@@ -56,12 +56,11 @@ impl endpoint::Plugin for Acceptor {
 async fn session_evt_loop(mut session: Session<Established>) {
     while let Ok(evt) = session.next_event().await {
         match evt {
-            SessionEvent::Terminated(cause) => {
+            SessionEvent::Signaling(SignalingEvent::Terminated(cause)) => {
                 println!("Terminated, cause = {cause:#?}");
                 break;
             }
-            SessionEvent::ReInvite(_invite) => println!("Reinvite"),
-            SessionEvent::Options(_options) => todo!(),
+            SessionEvent::Signaling(_other) => todo!(),
             SessionEvent::Media(_evt) => todo!(),
         }
     }

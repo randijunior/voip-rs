@@ -40,15 +40,31 @@ pub struct Established {
 }
 
 pub enum SessionEvent {
-    Terminated(Cause),
-    ReInvite(IncomingRequest),
-    Options(IncomingRequest),
+    Signaling(SignalingEvent),
     Media(MediaEvent),
+}
+
+impl From<SignalingEvent> for SessionEvent {
+    fn from(value: SignalingEvent) -> Self {
+        Self::Signaling(value)
+    }
+}
+
+impl From<MediaEvent> for SessionEvent {
+    fn from(value: MediaEvent) -> Self {
+        Self::Media(value)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Cause {
     ByeReceived,
+}
+
+pub enum SignalingEvent {
+    Terminated(Cause),
+    ReInvite(IncomingRequest),
+    Options(IncomingRequest),
 }
 
 pub struct InvitationParams {
@@ -310,7 +326,7 @@ impl Session<Established> {
         let Established { dialog, media } = &mut self.state;
 
         if dialog.state() == DialogState::Terminated {
-            return Ok(SessionEvent::Terminated(Cause::ByeReceived));
+            return Ok(SignalingEvent::Terminated(Cause::ByeReceived).into());
         }
 
         tokio::select! {
@@ -320,7 +336,7 @@ impl Session<Established> {
             Ok(request) = dialog.receive_request() => {
                 match request.req_line.method {
                     SipMethod::Invite => {
-                        return Ok(SessionEvent::ReInvite(request));
+                        return Ok(SignalingEvent::ReInvite(request).into());
                     }
                     SipMethod::Bye => {
                         let endpoint = dialog.endpoint().clone();
@@ -330,7 +346,7 @@ impl Session<Established> {
 
                         dialog.set_state(DialogState::Terminated);
 
-                        return Ok(SessionEvent::Terminated(Cause::ByeReceived))
+                        return Ok(SignalingEvent::Terminated(Cause::ByeReceived).into())
                     }
                     method => {
                         log::debug!("received request: {} (ignoring)", method);
