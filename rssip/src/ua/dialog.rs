@@ -23,7 +23,7 @@ pub enum DialogState {
     Init,
     Early,
     Confirmed,
-    Terminated
+    Terminated,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -97,7 +97,7 @@ impl Dialog {
         request: &IncomingRequest,
         contact: Contact,
         endpoint: Endpoint,
-    ) -> Result<Dialog> {
+    ) -> Result<Self> {
         if !request.req_line.method.can_establish_dialog() {
             return Err(Error::Dialog(format!(
                 "The sip method '{}' cannot establish a dialog",
@@ -122,7 +122,7 @@ impl Dialog {
             .ua_plugin()
             .register_dialog(dialog_id.clone(), sender);
 
-        let dialog = Dialog {
+        Ok(Self {
             dialog_id,
             remote_cseq: Some(mandatory_headers.cseq.cseq()),
             local_cseq: None,
@@ -136,9 +136,7 @@ impl Dialog {
             contact,
             receiver,
             endpoint,
-        };
-
-        Ok(dialog)
+        })
     }
 
     // RFC 3261 12.1.2.
@@ -147,7 +145,7 @@ impl Dialog {
         to_uri: SipUri,
         contact_uri: Option<SipUri>,
         endpoint: Endpoint,
-    ) -> Dialog {
+    ) -> Self {
         let contact_uri = contact_uri.unwrap_or(from_uri.clone());
         let secure = to_uri.scheme() == Scheme::Sips;
         let from_tag = crate::generate_tag();
@@ -182,7 +180,7 @@ impl Dialog {
             .ua_plugin()
             .register_dialog(dialog_id.clone(), sender);
 
-        let dialog = Dialog {
+        Self {
             dialog_id,
             remote_cseq: None,
             local_cseq: Some(cseq_num),
@@ -195,9 +193,7 @@ impl Dialog {
             contact,
             receiver,
             endpoint,
-        };
-
-        dialog
+        }
     }
 
     pub fn create_request(&mut self, method: SipMethod) -> Request {
